@@ -1,0 +1,14 @@
+[package]
+name = "parth_db"
+version = "0.1.0"
+edition = "2021"
+description = "Crash-safe embedded key-value and document database engine"
+
+[lib]
+name = "parth_db"
+path = "src/lib.rs"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3

@@ -1,0 +1,18 @@
+# dependencies
+node_modules/
+# build output
+target/
+dist/
+build/
+# environment and secrets
+.env
+.env.*
+!.env.example
+# runtime data and logs
+data/
+*.log
+# OS / editor
+.DS_Store
+.vscode/
+Thumbs.db
+.vercel/
