@@ -63,7 +63,7 @@ aside li button.active { border-color: var(--accent); background: var(--panel); 
 .status.off { color: var(--muted); }
 .status.on { color: var(--good); }
 .status.err { color: var(--bad); }
-.bar { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 8px 0; }
 .grid-wrap { overflow: auto; max-height: 340px; border: 1px solid var(--line); border-radius: 6px; margin-top: 8px; }
 .grid-wrap:empty { display: none; }
 table { border-collapse: collapse; width: 100%; }
@@ -79,3 +79,4 @@ td:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
 td.open { max-width: none; white-space: normal; overflow-wrap: anywhere; }
 .stale #tables, .stale #rows-wrap, .stale #result-wrap { opacity: 0.4; }
 .stale #schema::after { content: " (stale: last known data)"; color: var(--bad); }
+.bar select { max-width: 100%; }
