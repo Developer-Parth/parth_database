@@ -1,6 +1,7 @@
 (function () {
   var state = { base: "", token: "", table: "", page: 1 };
   var rowsLatest = createLatest();
+var sqlLatest = createLatest();
   var el = function (id) { return document.getElementById(id); };
 
   function setStatus(text, kind) {
@@ -172,36 +173,14 @@
   target.insertBefore(button, target.firstChild);
 }
 
-function pagedResult(target, columns, rows) {
-    var page = 1;
-    var bar = document.createElement("div");
-    var grid = document.createElement("div");
-    target.textContent = "";
-    target.appendChild(bar);
-    target.appendChild(grid);
-    function draw() {
-      var last = pageCount(rows.length, PAGE_SIZE);
-      page = clampPage(page, rows.length, PAGE_SIZE);
-      var offset = pageOffset(page, PAGE_SIZE);
-      var slice = rows.slice(offset, offset + PAGE_SIZE);
-      renderGrid(grid, columns, slice);
-      var info = document.createElement("span");
-      info.textContent = "Page " + page + " of " + last + ". Showing " + slice.length + " of " + rows.length + " returned rows";
-      var csv = pagerButton("Download CSV (all " + rows.length + " returned rows)", rows.length === 0, function () { downloadCsv(columns, rows); });
-      var prev = pagerButton("Previous", page <= 1, function () { page = page - 1; draw(); });
-      var next = pagerButton("Next", page >= last, function () { page = page + 1; draw(); });
-      bar.textContent = "";
-      [prev, next, info, csv].forEach(function (node) { bar.appendChild(node); });
-    }
-    draw();
-  }
+  var pagedResult = createResultPager({ doc: document, pageSize: PAGE_SIZE, pageCount: pageCount, clampPage: clampPage, pageOffset: pageOffset, renderGrid: renderGrid, pagerButton: pagerButton, downloadCsv: downloadCsv });
 function showResult(data) {
     var wrap = el("result-wrap");
     var message = el("message");
     message.className = "muted";
     if (!Array.isArray(data.results)) {
       message.textContent = describe(data);
-      pagedResult(wrap, data.columns, data.rows);
+      pagedResult(wrap, data.columns, data.rows, true);
       if (!data.columns.length) { wrap.textContent = ""; }
       return;
     }
@@ -215,7 +194,7 @@ function showResult(data) {
       if (result.columns.length) {
         var holder = document.createElement("div");
         holder.className = "grid-wrap";
-        pagedResult(holder, result.columns, result.rows);
+        pagedResult(holder, result.columns, result.rows, data.committed !== false);
         wrap.appendChild(holder);
       }
     });
@@ -265,10 +244,10 @@ function runSql() {
     var message = el("message");
     message.className = "muted";
     message.textContent = "Running";
-    request("POST", "/api/sql", { sql: sql }).then(function (data) {
+    runGuarded(sqlLatest, request("POST", "/api/sql", { sql: sql }), function (data) {
       showResult(data);
       return loadTables();
-    }).catch(function (err) {
+    }, function (err) {
       el("result-wrap").textContent = "";
       showError(err);
     });
@@ -277,6 +256,7 @@ function runSql() {
   el("connect").addEventListener("submit", function (event) {
     event.preventDefault();
     rowsLatest.invalidate();
+    sqlLatest.invalidate();
     state.base = el("server").value.replace(/\/+$/, "");
     state.token = el("token").value;
     state.table = "";
