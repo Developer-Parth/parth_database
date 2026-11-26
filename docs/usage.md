@@ -1,76 +1,42 @@
-# Running and using parth_database
+﻿# Running and using parth_database
 
 ## Build and test
 
     cd engine
-
     cargo build
-    cargo tes
-t
+    cargo test
 
-## S
-
-tart the server
-
-
+## Start the server
 
 Set a secret token of at least 16 characters. The server refuses to start without it. Pick your own value and keep it out of the repository.
 
-    $env:PARTH_DB_DIR 
+    $env:PARTH_DB_DIR = "D:\parth_data"
+    $env:PARTH_DB_TOKEN = "<your secret, 16+ characters>"
+    $env:PARTH_DB_ADDR = "127.0.0.1:8787"
+    cargo run
 
-= "D:\parth_data"
-    $e
-nv:PARTH_DB_TOKEN = "<your secret, 16+ characters>"
- 
-   $env:PARTH_DB_ADDR = "127.0.0.1:8787"
-    cargo r
-un
-
-P
-
-ARTH_DB_DIR is where the database files live. PARTH_DB_ADDR defaults to 127.0.0.1:8787. Non-loopback addresses are refused unless PARTH_DB_ALLOW_REMOTE=1 is set. There is no TLS, so do not expose the port to a network.
-
+PARTH_DB_DIR is where the database files live. PARTH_DB_ADDR defaults to 127.0.0.1:8787. Non-loopback addresses are refused unless PARTH_DB_ALLOW_REMOTE=1 is set. There is no TLS, so do not expose the port to a network.
 
 ## Use the frontend
 
-Serve
-
-
- the repository root with any static file server, for example `python -m http.server 8000 --bind 127.0.0.1`, and open http://127.0.0.1:8000/. Enter the server address and the token, then press Connect. Click a table to see its rows. Click a truncated cell, or focus it with Tab and press Enter or Space, to show its full value. If the server stops answering, the page keeps the last known data, dims it and marks it stale until a request succeeds again.
-
-
+Serve the repository root with any static file server, for example `python -m http.server 8000 --bind 127.0.0.1`, and open http://127.0.0.1:8000/. Enter the server address and the token, then press Connect. Click a table to see its rows. Click a truncated cell, or focus it with Tab and press Enter or Space, to show its full value. If the server stops answering, the page keeps the last known data, dims it and marks it stale until a request succeeds again.
 
 ## Use the API directly
 
+Every endpoint except /api/health needs the header `Authorization: Bearer <token>`.
 
-Every endpoint except /api/he
-alth needs the header `Authorization: Bearer <token>`.
+    Invoke-RestMethod http://127.0.0.1:8787/api/tables -Headers @{Authorization="Bearer <token>"}
 
-  
+## SQL
 
-  Invoke-RestMethod http://127.0.0.1:8787/api/tables -Headers @{Authorization="Bearer <token>"}
-
-
-## S
-QL
-
-    CR
-
-EATE TABLE notes (id INT PRIMARY KEY, body TEXT)
-  
-  INSERT INTO notes VALUES (1, 'hello')
-
+    CREATE TABLE notes (id INT PRIMARY KEY, body TEXT)
+    INSERT INTO notes VALUES (1, 'hello')
     SELECT * FROM notes WHERE id = 1 ORDER BY id LIMIT 10
-    UP
-DATE notes SET body = 'changed' WHERE id = 1
-    
-DELETE FROM notes WHERE id = 1
-    D
-ROP TABLE notes
+    UPDATE notes SET body = 'changed' WHERE id = 1
+    DELETE FROM notes WHERE id = 1
+    DROP TABLE notes
 
-Column 
-
-types are INT, REAL, TEXT and BOOL. Every table needs exactly one PRIMARY KEY column. A key may be at most 500 bytes and a stored row up to 1 MiB (1048576 bytes). That storage limit is separate from the 1 MB HTTP request body limit. There are no JOINs.
+Column types are INT, REAL, TEXT and BOOL. Every table needs exactly one PRIMARY KEY column. A key may be at most 500 bytes and a stored row up to 1 MiB (1048576 bytes). That storage limit is separate from the 1 MB HTTP request body limit. There are no JOINs.
 
 ## Aggregates
 
@@ -85,7 +51,7 @@ Rules that are tested:
 - SUM of INT columns is INT and fails with an error on integer overflow. AVG is REAL. A REAL result that is not finite is an error.
 - SUM and AVG need a numeric column. Only COUNT accepts *.
 - LIMIT 0 returns no rows, any larger LIMIT returns the one row.
-- ORDER BY is rejected with aggregates. Mixing plain columns with aggregates is rejected. GROUP BY is not supported yet.
+- ORDER BY is rejected with aggregates. Mixing plain columns with aggregates is rejected. GROUP BY is described below.
 
 ## Transactions
 
@@ -116,3 +82,36 @@ A script that starts with BEGIN and ends with COMMIT or ROLLBACK can be pasted i
 - COUNT, SUM, MIN, MAX and AVG are computed per group. WHERE filters rows before grouping.
 - Groups come back in ascending order of the grouping key. ORDER BY may only name a grouping column that is in the select list. LIMIT applies to groups.
 - Rejected with an error: SELECT * with GROUP BY, a column next to an aggregate without GROUP BY, a column missing from GROUP BY, and HAVING.
+
+## Web console
+
+The web console is a browser client for the parth_database HTTP API. It does not store the API token. Connect with the server address and the token the API process was started with.
+
+## Table view
+
+- Rows are fetched with LIMIT and OFFSET on the server. The page size is 100 and the API caps a single request at 1000 rows.
+- Rows have no guaranteed order beyond the scan order of the table. If rows are inserted or deleted between page requests, the pages can shift.
+- Download CSV in the table view exports only the page currently shown.
+- Responses that arrive late or out of order, including late errors, are ignored. Connecting to another server also drops any request still in flight.
+
+## SQL box
+
+- Run with the button or Ctrl+Enter.
+- String literals use single quotes only. Unsupported SQL is rejected with an error.
+- Results are paged in the browser, 100 rows per page. The API returns every row of the result in one response, so the browser holds the whole result in memory and there is no bound on network use or memory.
+- Download CSV in the SQL box exports all returned rows, not only the visible page. The label shows the count.
+- When a multi-statement request is rolled back, the result is shown without a CSV export.
+- Late or out of order SQL responses and errors are ignored, and switching servers drops a request in flight.
+
+## Query history
+
+- History is kept in the browser only when Remember queries is ticked. It stores SQL text only, up to 25 entries per server, and never the token.
+- Clear history removes the saved entries for the connected server.
+
+## Tests
+
+The browser modules are covered by plain node scripts in web_tests: csv, guarded, history, latest, paging and resultpager. Run each with node, for example node web_tests/paging.test.js. The resultpager test uses a fake DOM, not a real browser.
+
+## Limits
+
+Crash safety was tested by killing the process. Behaviour under power loss has not been verified.
