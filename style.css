@@ -74,3 +74,8 @@ td.null { color: var(--muted); font-style: italic; }
 @media (max-width: 700px) { main { grid-template-columns: 1fr; } }
 main > * { min-width: 0; }
 td { max-width: 420px; overflow: hidden; text-overflow: ellipsis; }
+td { cursor: pointer; }
+td:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
+td.open { max-width: none; white-space: normal; overflow-wrap: anywhere; }
+.stale #tables, .stale #rows-wrap, .stale #result-wrap { opacity: 0.4; }
+.stale #schema::after { content: " (stale: last known data)"; color: var(--bad); }

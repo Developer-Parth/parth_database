@@ -24,6 +24,8 @@
           err.status = response.status;
           throw err;
         }
+        document.body.classList.remove("stale");
+        setStatus("Connected to " + state.base, "on");
         return data;
       });
     });
@@ -38,6 +40,14 @@
       td.textContent = String(value);
       td.title = String(value);
     }
+    td.tabIndex = 0;
+    td.addEventListener("click", function () { td.classList.toggle("open"); });
+    td.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        td.classList.toggle("open");
+      }
+    });
     return td;
   }
 
@@ -101,6 +111,7 @@
   }
 
   function showError(err) {
+    if (err instanceof TypeError || err.status === 401) { document.body.classList.add("stale"); }
     if (err instanceof TypeError) {
       setStatus("Cannot reach server (blocked, offline or mixed content)", "err");
     } else if (err.status === 401) {
