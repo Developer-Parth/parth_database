@@ -1,5 +1,6 @@
 (function () {
-  var state = { base: "", token: "", table: "", page: 1, seq: 0 };
+  var state = { base: "", token: "", table: "", page: 1 };
+  var rowsLatest = createLatest();
   var el = function (id) { return document.getElementById(id); };
 
   function setStatus(text, kind) {
@@ -100,13 +101,12 @@
   function loadRows(name, columns, page) {
     state.table = name;
     state.page = page || 1;
-    state.seq += 1;
-    var seq = state.seq;
+    var seq = rowsLatest.begin();
     el("view-title").textContent = "Rows: " + name;
     el("schema").textContent = describeColumns(columns);
     var query = "?limit=" + PAGE_SIZE + "&offset=" + pageOffset(state.page, PAGE_SIZE);
     request("GET", "/api/tables/" + encodeURIComponent(name) + "/rows" + query).then(function (data) {
-      if (seq !== state.seq) {
+      if (!rowsLatest.isCurrent(seq)) {
         return;
       }
       if (state.page > pageCount(data.total, PAGE_SIZE)) {
@@ -120,7 +120,7 @@
         b.className = b.dataset.name === name ? "active" : "";
       });
     }).catch(function (error) {
-      if (seq === state.seq) {
+      if (rowsLatest.isCurrent(seq)) {
         showError(error);
       }
     });
@@ -255,6 +255,7 @@ function runSql() {
 
   el("connect").addEventListener("submit", function (event) {
     event.preventDefault();
+    rowsLatest.invalidate();
     state.base = el("server").value.replace(/\/+$/, "");
     state.token = el("token").value;
     state.table = "";
