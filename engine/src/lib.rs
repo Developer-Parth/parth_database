@@ -1,6 +1,7 @@
 
 pub mod crc;
 pub mod error;
+pub mod json;
 pub mod store;
 pub mod wal;
 
