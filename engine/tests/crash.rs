@@ -162,3 +162,45 @@ fn multi_row_update_is_all_or_nothing_after_hard_kill() {
     drop(second);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn transaction_commit_is_all_or_nothing_after_hard_kill() {
+    let dir = datadir("txn");
+    let mut server = start(&dir);
+    let addr = server.addr;
+    assert_eq!(try_sql(addr, "CREATE TABLE a (id INT PRIMARY KEY, v INT)").unwrap().0, 200);
+    assert_eq!(try_sql(addr, "CREATE TABLE b (id INT PRIMARY KEY, v INT)").unwrap().0, 200);
+    for id in 1..50 {
+        assert_eq!(try_sql(addr, &format!("INSERT INTO a VALUES ({}, 0)", id)).unwrap().0, 200);
+        assert_eq!(try_sql(addr, &format!("INSERT INTO b VALUES ({}, 0)", id)).unwrap().0, 200);
+    }
+    let acked = Arc::new(AtomicUsize::new(0));
+    let counter = acked.clone();
+    let writer = thread::spawn(move || {
+        for k in 1..100000usize {
+            let script = format!("BEGIN; UPDATE a SET v = {}; UPDATE b SET v = {}; COMMIT;", k, k);
+            match try_sql(addr, &script) {
+                Some((200, _)) => counter.store(k, Ordering::SeqCst),
+                _ => break,
+            }
+        }
+    });
+    kill_when_acked(&mut server, &acked, 30);
+    writer.join().unwrap();
+    let confirmed = acked.load(Ordering::SeqCst) as f64;
+
+    let second = start(&dir);
+    let a = rows(second.addr, "SELECT id, v FROM a ORDER BY id");
+    let b = rows(second.addr, "SELECT id, v FROM b ORDER BY id");
+    assert_eq!(a.len(), 49);
+    assert_eq!(b.len(), 49);
+    let value = a[0][1];
+    assert!(value == confirmed || value == confirmed + 1.0);
+    for row in a.iter().chain(b.iter()) {
+        assert_eq!(row[1], value);
+    }
+    drop(second);
+    let _ = std
+::fs::remove_dir_all(&dir);
+
+}
