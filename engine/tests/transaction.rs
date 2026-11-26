@@ -158,3 +158,14 @@ fn committed_work_survives_reopen_and_rolled_back_work_does_not() {
     assert_eq!(q(&db, "SELECT id FROM users WHERE id > 4").rows.len(), 0);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[test]
+fn semicolons_inside_quoted_text_do_not_split_statements() {
+    let (db, dir) = seeded("semi");
+    let outcome = execute_script(&db, "BEGIN; INSERT INTO users VALUES (4, 'a;b; COMMIT; c'); SELECT name FROM users WHERE id = 4; COMMIT").unwrap();
+    let (committed, done) = results(outcome);
+    assert!(committed);
+    assert_eq!(done.len(), 2);
+    assert_eq!(done[1].rows[0][0], Value::Text("a;b; COMMIT; c".into()));
+    let _ = std::fs::remove_dir_all(dir);
+}

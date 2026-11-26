@@ -157,3 +157,25 @@ fn concurrent_clients_do_not_lose_writes() {
         _ => panic!("no rows"),
     }
 }
+#[test]
+fn transactions_commit_and_roll_back_over_http() {
+    let addr = launch("txn");
+    let (status, _) = sql(addr, "CREATE TABLE notes (id INT PRIMARY KEY, body TEXT)");
+    assert_eq!(status, 200);
+    let (status, body) = sql(addr, "BEGIN; INSERT INTO notes VALUES (1, 'a;b'); INSERT INTO notes VALUES (2, 'kept'); COMMIT;");
+    assert_eq!(status, 200);
+    let text = body.to_string_compact();
+    assert!(text.contains("\"committed\":true"), "{text}");
+    let (status, body) = sql(addr, "BEGIN; INSERT INTO notes VALUES (3, 'gone'); ROLLBACK;");
+    assert_eq!(status, 200);
+    assert!(body.to_string_compact().contains("\"committed\":false"));
+    let (status, _) = sql(addr, "BEGIN; INSERT INTO notes VALUES (4, 'never')");
+    assert_eq!(status, 400);
+    let (status, _) = sql(addr, "BEGIN; INSERT INTO notes VALUES (5, 'dup'); INSERT INTO notes VALUES (1, 'dup'); COMMIT");
+    assert_eq!(status, 400);
+    let (status, body) = sql(addr, "SELECT * FROM notes ORDER BY id");
+    assert_eq!(status, 200);
+    let text = body.to_string_compact();
+    assert!(text.contains("a;b") && text.contains("kept"), "{text}");
+    assert!(!text.contains("gone") && !text.contains("never") && !text.contains("dup"), "{text}");
+}
