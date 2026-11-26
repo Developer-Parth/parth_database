@@ -131,7 +131,7 @@
   button.type = "button";
   button.textContent = "Download CSV";
   button.addEventListener("click", function () { downloadCsv(columns, rows); });
-  target.appendChild(button);
+  target.insertBefore(button, target.firstChild);
 }
 
 function showResult(data) {
