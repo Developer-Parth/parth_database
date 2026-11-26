@@ -161,6 +161,9 @@ pub struct BTree {
     next_page: u64,
     entries: u64,
     dirty: HashMap<u64, Node>,
+    available: Vec<u64>,
+    pending: Vec<u64>,
+    freed: Vec<u64>,
 }
 
 fn validate(key: &[u8], value: Option<&[u8]>) -> Result<()> {
@@ -202,6 +205,7 @@ impl BTree {
                 }
             }
         }
+        let fallback_root = if metas.len() == 2 { metas.iter().min_by_key(|m| m.txid).map(|m| m.root) } else { None };
         let meta = match metas.into_iter().max_by_key(|m| m.txid) {
             Some(m) => m,
             None if len == 0 => {
@@ -214,7 +218,37 @@ impl BTree {
             }
             None => return Err(Error::Corrupt("no valid meta page".into())),
         };
-        Ok(BTree { file, meta, root: meta.root, next_page: meta.page_count, entries: meta.entries, dirty: HashMap::new() })
+        let mut tree = BTree { file, meta, root: meta.root, next_page: meta.page_count, entries: meta.entries, dirty: HashMap::new(), available: Vec::new(), pending: Vec::new(), freed: Vec::new() };
+        tree.rebuild_free(fallback_root);
+        Ok(tree)
+    }
+
+    fn rebuild_free(&mut self, fallback_root: Option<u64>) {
+        let mut reachable = std::collections::HashSet::new();
+        let mut roots = vec![self.meta.root];
+        roots.extend(fallback_root);
+        for root in roots {
+            if root != 0 && self.collect_pages(root, &mut reachable).is_err() {
+                return;
+            }
+        }
+        self.available = (2..self.meta.page_count).filter(|p| !reachable.contains(p)).collect();
+    }
+
+    fn collect_pages(&mut self, pid: u64, seen: &mut std::collections::HashSet<u64>) -> Result<()> {
+        if !seen.insert(pid) {
+            return Ok(());
+        }
+        if let Node::Internal(_, children) = self.read_node(pid)? {
+            for c in children {
+                self.collect_pages(c, seen)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn free_page_count(&self) -> usize {
+        self.available.len() + self.pending.len()
     }
 
     pub fn len(&self) -> u64 {
@@ -247,19 +281,33 @@ impl BTree {
     }
 
     fn store_node(&mut self, pid: u64, node: Node) -> u64 {
-        let id = if self.dirty.contains_key(&pid) { pid } else { self.alloc() };
+        let id = if self.dirty.contains_key(&pid) {
+            pid
+        } else {
+            if pid >= 2 {
+                self.freed.push(pid);
+            }
+            self.alloc()
+        };
         self.dirty.insert(id, node);
         id
     }
 
     fn alloc(&mut self) -> u64 {
+        if let Some(id) = self.available.pop() {
+            return id;
+        }
         let id = self.next_page;
         self.next_page += 1;
         id
     }
 
     fn discard(&mut self, pid: u64) {
-        self.dirty.remove(&pid);
+        if self.dirty.remove(&pid).is_some() {
+            self.available.push(pid);
+        } else if pid >= 2 {
+            self.freed.push(pid);
+        }
     }
 
     pub fn get(&mut self, key: &[u8]) -> Result<Option<Vec<u8>>> {
@@ -327,9 +375,13 @@ impl BTree {
         for (k, v) in ops {
             validate(k, v.as_deref())?;
         }
+        let saved = (self.available.clone(), self.pending.clone());
         let result = self.apply_inner(ops);
         if result.is_err() {
             self.rollback();
+            self.available = saved.0;
+            self.pending = saved.1;
+            self.freed.clear();
         }
         result
     }
@@ -536,6 +588,9 @@ impl BTree {
         self.file.write_all(&next.encode())?;
         self.file.sync_data()?;
         self.meta = next;
+        let previous = std::mem::take(&mut self.pending);
+        self.available.extend(previous);
+        self.pending = std::mem::take(&mut self.freed);
         self.dirty.clear();
         Ok(())
     }

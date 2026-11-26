@@ -217,3 +217,75 @@ fn file_without_valid_meta_is_rejected() {
     assert!(matches!(BTree::open(&p), Err(Error::Corrupt(_))));
     let _ = fs::remove_file(&p);
 }
+
+#[test]
+fn overwriting_the_same_keys_reuses_pages() {
+    let p = tmpfile("reuse");
+    let mut t = BTree::open(&p).unwrap();
+    let ops: Vec<_> = (0..300u64).map(|i| (key(i), Some(val(i)))).collect();
+    t.apply(&ops).unwrap();
+    for round in 0..200u64 {
+        let ops: Vec<_> = (0..300u64).step_by(7).map(|i| (key(i), Some(val(i + round)))).collect();
+        t.apply(&ops).unwrap();
+    }
+    assert!(t.pages_in_file() < 200, "file grew to {}", t.pages_in_file());
+    t.check().unwrap();
+    for i in (0..300u64).step_by(7) {
+        assert_eq!(t.get(&key(i)).unwrap(), Some(val(i + 199)));
+    }
+    let _ = fs::remove_file(&p);
+}
+
+#[test]
+fn reuse_never_damages_the_fallback_generation() {
+    let p = tmpfile("fallback");
+    let mut model: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
+    let mut before_last = BTreeMap::new();
+    let txid;
+    {
+        let mut t = BTree::open(&p).unwrap();
+        for round in 0..60u64 {
+            before_last = model.clone();
+            let ops: Vec<_> = (0..120u64)
+                .map(|i| (key((i * 13 + round) % 200), if (i + round) % 5 == 0 { None } else { Some(val(i + round)) }))
+                .collect();
+            for (k, v) in &ops {
+                match v {
+                    Some(v) => {
+                        model.insert(k.clone(), v.clone());
+                    }
+                    None => {
+                        model.remove(k);
+                    }
+                }
+            }
+            t.apply(&ops).unwrap();
+        }
+        txid = t.txid();
+    }
+    flip_byte(&p, (txid % 2) * PAGE_SIZE as u64 + 20);
+    let mut t = BTree::open(&p).unwrap();
+    assert_eq!(t.txid(), txid - 1);
+    t.check().unwrap();
+    let all = t.range(None, None, usize::MAX).unwrap();
+    let expected: Vec<_> = before_last.into_iter().collect();
+    assert_eq!(all, expected);
+    let _ = fs::remove_file(&p);
+}
+
+#[test]
+fn reopen_recovers_free_pages() {
+    let p = tmpfile("reopenfree");
+    for cycle in 0..30u64 {
+        let mut t = BTree::open(&p).unwrap();
+        let ops: Vec<_> = (0..200u64).map(|i| (key(i), Some(val(i + cycle)))).collect();
+        t.apply(&ops).unwrap();
+        t.apply(&ops).unwrap();
+        t.check().unwrap();
+    }
+    let mut t = BTree::open(&p).unwrap();
+    assert!(t.pages_in_file() < 150, "file grew to {}", t.pages_in_file());
+    assert!(t.free_page_count() > 0);
+    assert_eq!(t.get(&key(5)).unwrap(), Some(val(5 + 29)));
+    let _ = fs::remove_file(&p);
+}
