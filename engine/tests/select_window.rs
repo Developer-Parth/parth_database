@@ -64,3 +64,12 @@ let zero = execute(&db, "SELECT id FROM t LIMIT 0").unwrap();
 assert!(zero.rows.is_empty());
 assert!(!zero.truncated);
 }
+
+#[test]
+fn plain_select_stops_before_a_row_that_would_fail() {
+let db = table_of("earlystop", 150);
+let stopped = execute(&db, "SELECT id FROM t WHERE 10 / (id - 100) < 0 LIMIT 2").unwrap();
+assert_eq!(stopped.rows.len(), 2);
+let full = execute(&db, "SELECT id FROM t WHERE 10 / (id - 100) < 0 ORDER BY id LIMIT 2");
+assert!(full.is_err());
+}
