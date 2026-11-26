@@ -219,6 +219,7 @@ fn result_json(result: &QueryResult) -> Json {
         ("columns", Json::Array(result.columns.iter().map(|c| Json::String(c.clone())).collect())),
         ("rows", Json::Array(rows)),
         ("affected", Json::Number(result.affected as f64)),
+        ("truncated", Json::Bool(result.truncated)),
     ])
 }
 

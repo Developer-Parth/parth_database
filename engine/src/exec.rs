@@ -9,11 +9,12 @@ pub struct QueryResult {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<Value>>,
     pub affected: usize,
+    pub truncated: bool,
 }
 
 impl QueryResult {
     fn affected(count: usize) -> QueryResult {
-        QueryResult { columns: Vec::new(), rows: Vec::new(), affected: count }
+        QueryResult { columns: Vec::new(), rows: Vec::new(), affected: count, truncated: false }
     }
 }
 
@@ -134,7 +135,7 @@ fn select(
             }
         }
         let rows = if limit == Some(0) || offset > 0 { Vec::new() } else { vec![values] };
-        return Ok(QueryResult { columns, rows, affected: 0 });
+        return Ok(QueryResult { columns, rows, affected: 0, truncated: false });
     }
     let names: Vec<String> = match projection {
         Projection::All => schema.columns.iter().map(|c| c.name.clone()).collect(),
@@ -162,14 +163,12 @@ fn select(
         });
     }
     rows.drain(..offset.min(rows.len()));
-    if let Some(limit) = limit {
-        rows.truncate(limit);
-    }
+    let truncated = cap_rows(&mut rows, limit);
     let rows = rows
         .into_iter()
         .map(|row| indexes.iter().map(|i| row[*i].clone()).collect())
         .collect();
-    Ok(QueryResult { columns: names, rows, affected: 0 })
+    Ok(QueryResult { columns: names, rows, affected: 0, truncated })
 }
 
 fn compare_keys(keys: &[usize], a: &[crate::value::Value], b: &[crate::value::Value]) -> std::cmp::Ordering {
@@ -294,10 +293,8 @@ fn grouped_select(
         });
     }
     output.drain(..offset.min(output.len()));
-    if let Some(limit) = limit {
-        output.truncate(limit);
-    }
-    Ok(QueryResult { columns, rows: output, affected: 0 })
+    let truncated = cap_rows(&mut output, limit);
+    Ok(QueryResult { columns, rows: output, affected: 0, truncated })
 }
 
 fn update(db: &Database, table: &str, sets: Vec<(String, Expr)>, filter: Option<Expr>) -> Result<QueryResult> {
@@ -524,4 +521,13 @@ pub fn execute_script(db: &Database, sql: &str) -> Result<Outcome> {
         statements.into_iter().map(|s| run(view, s)).collect::<Result<Vec<_>>>()
     })?;
     Ok(Outcome::Transaction { committed, results })
+}
+
+pub const MAX_RESULT_ROWS: usize = 10000;
+
+fn cap_rows<T>(rows: &mut Vec<T>, limit: Option<usize>) -> bool {
+    let wanted = limit.unwrap_or(usize::MAX);
+    let truncated = rows.len() > MAX_RESULT_ROWS && wanted > MAX_RESULT_ROWS;
+    rows.truncate(wanted.min(MAX_RESULT_ROWS));
+    truncated
 }
