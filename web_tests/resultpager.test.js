@@ -98,5 +98,19 @@ var rerun = setup();
 rerun.pager(rerun.target, ["id", "v"], rowsOf(10), true);
 rerun.pager(rerun.target, ["id", "v"], rowsOf(10), true);
 assert.strictEqual(rerun.target.children.length, 2);
+var capped = setup();
+capped.pager(capped.target, ["id", "v"], rowsOf(250), true, true);
+assert.ok(info(capped).indexOf("Truncated: the server capped this result") !== -1);
+assert.strictEqual(bar(capped)[3].textContent, "Download CSV (truncated: first 250 rows only, not the full result)");
+
+var complete = setup();
+complete.pager(complete.target, ["id", "v"], rowsOf(250), true, false);
+assert.strictEqual(info(complete).indexOf("Truncated"), -1);
+assert.strictEqual(button(complete, "Download CSV").label, "Download CSV (all 250 returned rows)");
+
+var omitted = setup();
+omitted.pager(omitted.target, ["id", "v"], rowsOf(250), true);
+assert.strictEqual(info(omitted).indexOf("Truncated"), -1);
+assert.strictEqual(button(omitted, "Download CSV").label, "Download CSV (all 250 returned rows)");
 
 console.log("resultpager tests passed");

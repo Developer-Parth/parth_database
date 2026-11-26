@@ -180,7 +180,7 @@ function showResult(data) {
     message.className = "muted";
     if (!Array.isArray(data.results)) {
       message.textContent = describe(data);
-      pagedResult(wrap, data.columns, data.rows, true);
+      pagedResult(wrap, data.columns, data.rows, true, data.truncated === true);
       if (!data.columns.length) { wrap.textContent = ""; }
       return;
     }
@@ -194,7 +194,7 @@ function showResult(data) {
       if (result.columns.length) {
         var holder = document.createElement("div");
         holder.className = "grid-wrap";
-        pagedResult(holder, result.columns, result.rows, data.committed !== false);
+        pagedResult(holder, result.columns, result.rows, data.committed !== false, result.truncated === true);
         wrap.appendChild(holder);
       }
     });
