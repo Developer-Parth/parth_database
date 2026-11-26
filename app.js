@@ -172,14 +172,36 @@
   target.insertBefore(button, target.firstChild);
 }
 
+function pagedResult(target, columns, rows) {
+    var page = 1;
+    var bar = document.createElement("div");
+    var grid = document.createElement("div");
+    target.textContent = "";
+    target.appendChild(bar);
+    target.appendChild(grid);
+    function draw() {
+      var last = pageCount(rows.length, PAGE_SIZE);
+      page = clampPage(page, rows.length, PAGE_SIZE);
+      var offset = pageOffset(page, PAGE_SIZE);
+      var slice = rows.slice(offset, offset + PAGE_SIZE);
+      renderGrid(grid, columns, slice);
+      var info = document.createElement("span");
+      info.textContent = "Page " + page + " of " + last + ". Showing " + slice.length + " of " + rows.length + " returned rows";
+      var csv = pagerButton("Download CSV (all " + rows.length + " returned rows)", rows.length === 0, function () { downloadCsv(columns, rows); });
+      var prev = pagerButton("Previous", page <= 1, function () { page = page - 1; draw(); });
+      var next = pagerButton("Next", page >= last, function () { page = page + 1; draw(); });
+      bar.textContent = "";
+      [prev, next, info, csv].forEach(function (node) { bar.appendChild(node); });
+    }
+    draw();
+  }
 function showResult(data) {
     var wrap = el("result-wrap");
     var message = el("message");
     message.className = "muted";
     if (!Array.isArray(data.results)) {
       message.textContent = describe(data);
-      renderGrid(wrap, data.columns, data.rows);
-      addExport(wrap, data.columns, data.rows);
+      pagedResult(wrap, data.columns, data.rows);
       if (!data.columns.length) { wrap.textContent = ""; }
       return;
     }
@@ -193,9 +215,8 @@ function showResult(data) {
       if (result.columns.length) {
         var holder = document.createElement("div");
         holder.className = "grid-wrap";
-        renderGrid(holder, result.columns, result.rows);
+        pagedResult(holder, result.columns, result.rows);
         wrap.appendChild(holder);
-      if (data.committed !== false) { addExport(wrap, result.columns, result.rows); }
       }
     });
   }
