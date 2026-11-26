@@ -43,18 +43,6 @@ struct Response {
     body: String,
 }
 
-pub fn generate_token() -> String {
-    use std::collections::hash_map::RandomState;
-    use std::hash::{BuildHasher, Hasher};
-    let mut out = String::new();
-    for i in 0..4u64 {
-        let mut hasher = RandomState::new().build_hasher();
-        hasher.write_u64(i);
-        out.push_str(&format!("{:016x}", hasher.finish()));
-    }
-    out
-}
-
 pub fn start(db: Database, config: Config) -> Result<Server> {
     if config.token.len() < MIN_TOKEN_LEN {
         return Err(Error::InvalidInput(format!("token must be at least {MIN_TOKEN_LEN} characters")));
