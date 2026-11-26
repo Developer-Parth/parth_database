@@ -125,7 +125,7 @@ fn table_prefix(table: &str) -> Vec<u8> {
     key
 }
 
-fn row_key(table: &str, pk: &Value) -> Result<Vec<u8>> {
+pub(crate) fn row_key(table: &str, pk: &Value) -> Result<Vec<u8>> {
     let mut key = table_prefix(table);
     key.extend(encode_key(pk).map_err(corrupt)?);
     Ok(key)
@@ -194,7 +194,7 @@ impl Database {
         self.store.write(batch)
     }
 
-    fn check_row(schema: &Schema, row: &[Value]) -> Result<Vec<Value>> {
+    pub(crate) fn check_row(schema: &Schema, row: &[Value]) -> Result<Vec<Value>> {
         if row.len() != schema.columns.len() {
             return Err(invalid("wrong number of values"));
         }
