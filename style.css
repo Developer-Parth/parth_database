@@ -80,3 +80,6 @@ td.open { max-width: none; white-space: normal; overflow-wrap: anywhere; }
 .stale #tables, .stale #rows-wrap, .stale #result-wrap { opacity: 0.4; }
 .stale #schema::after { content: " (stale: last known data)"; color: var(--bad); }
 .bar select { max-width: 100%; }
+
+.pager { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.5rem 0; }
+.pager button:disabled { opacity: 0.5; cursor: default; }

@@ -1,5 +1,5 @@
 (function () {
-  var state = { base: "", token: "", table: "" };
+  var state = { base: "", token: "", table: "", page: 1 };
   var el = function (id) { return document.getElementById(id); };
 
   function setStatus(text, kind) {
@@ -70,18 +70,46 @@
     target.appendChild(table);
   }
 
-  function describe(columns) {
+  function describeColumns(columns) {
     return columns.map(function (c) {
       return c.name + " " + c.type + (c.primary_key ? " (primary key)" : "");
     }).join(", ");
   }
 
-  function loadRows(name, columns) {
+  function pagerButton(text, disabled, onClick) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.textContent = text;
+    b.disabled = disabled;
+    b.addEventListener("click", onClick);
+    return b;
+  }
+
+  function renderPager(name, columns, data) {
+    var pager = el("pager");
+    pager.textContent = "";
+    var last = pageCount(data.total, PAGE_SIZE);
+    var prev = pagerButton("Previous", state.page <= 1, function () { loadRows(name, columns, state.page - 1); });
+    var next = pagerButton("Next", state.page >= last, function () { loadRows(name, columns, state.page + 1); });
+    var info = document.createElement("span");
+    info.textContent = "Page " + state.page + " of " + last + ". " + describePage(data.total, data.offset, data.rows.length);
+    var csv = pagerButton(exportLabel(data.rows.length, data.total), data.rows.length === 0, function () { downloadCsv(data.columns, data.rows); });
+    [prev, next, info, csv].forEach(function (node) { pager.appendChild(node); });
+  }
+
+  function loadRows(name, columns, page) {
     state.table = name;
+    state.page = page || 1;
     el("view-title").textContent = "Rows: " + name;
-    el("schema").textContent = describe(columns);
-    request("GET", "/api/tables/" + encodeURIComponent(name) + "/rows").then(function (data) {
+    el("schema").textContent = describeColumns(columns);
+    var query = "?limit=" + PAGE_SIZE + "&offset=" + pageOffset(state.page, PAGE_SIZE);
+    request("GET", "/api/tables/" + encodeURIComponent(name) + "/rows" + query).then(function (data) {
+      if (state.page > pageCount(data.total, PAGE_SIZE)) {
+        loadRows(name, columns, clampPage(state.page, data.total, PAGE_SIZE));
+        return;
+      }
       renderGrid(el("rows-wrap"), data.columns, data.rows);
+      renderPager(name, columns, data);
       var buttons = el("tables").querySelectorAll("button");
       Array.prototype.forEach.call(buttons, function (b) {
         b.className = b.dataset.name === name ? "active" : "";
@@ -106,7 +134,7 @@
       });
       if (state.table) {
         var again = data.tables.filter(function (t) { return t.name === state.table; })[0];
-        if (again) { loadRows(again.name, again.columns); }
+        if (again) { loadRows(again.name, again.columns, state.page); }
       }
     });
   }
