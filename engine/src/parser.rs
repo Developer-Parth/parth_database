@@ -1,6 +1,7 @@
 use crate::error::{Error, Result};
 use crate::lexer::{tokenize, Token};
 use crate::table::ColumnType;
+use crate::aggregate::{AggFunc, Aggregate};
 use crate::value::Value;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -38,6 +39,7 @@ pub struct ColumnDef {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Projection {
+    Aggregates(Vec<Aggregate>),
     All,
     Columns(Vec<String>),
 }
@@ -201,6 +203,48 @@ impl Parser {
         Ok(ty)
     }
 
+    fn aggregate_ahead(&mut self) -> bool {
+        let start = self.pos;
+        let named = match self.peek() {
+            Some(Token::Word(w)) => AggFunc::parse(w).is_some(),
+            _ => false,
+        };
+        let mut found = false;
+        if named {
+            self.pos += 1;
+            found = self.eat_symbol("(");
+        }
+        self.pos = start;
+        found
+    }
+
+    fn aggregate_list(&mut self) -> Result<Vec<Aggregate>> {
+        let mut items = vec![self.aggregate()?];
+        while self.eat_symbol(",") {
+            items.push(self.aggregate()?);
+        }
+        Ok(items)
+    }
+
+    fn aggregate(&mut self) -> Result<Aggregate> {
+        let name = self.identifier()?;
+        let func = match AggFunc::parse(&name) {
+            Some(func) => func,
+            None => return fail(format!("unknown function {name}")),
+        };
+        self.expect_symbol("(")?;
+        let column = if self.eat_symbol("*") {
+            if func != AggFunc::Count {
+                return fail("only COUNT accepts *");
+            }
+            None
+        } else {
+            Some(self.identifier()?)
+        };
+        self.expect_symbol(")")?;
+        Ok(Aggregate { func, column })
+    }
+
     fn name_list(&mut self) -> Result<Vec<String>> {
         let mut names = vec![self.identifier()?];
         while self.eat_symbol(",") {
@@ -237,7 +281,9 @@ impl Parser {
     }
 
     fn select(&mut self) -> Result<Statement> {
-        let projection = if self.eat_symbol("*") {
+        let projection = if self.aggregate_ahead() {
+            Projection::Aggregates(self.aggregate_list()?)
+        } else if self.eat_symbol("*") {
             Projection::All
         } else {
             Projection::Columns(self.name_list()?)

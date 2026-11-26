@@ -1,5 +1,6 @@
 use crate::error::{Error, Result};
 use crate::parser::{parse, BinOp, Expr, Projection, Statement};
+use crate::aggregate;
 use crate::table::{Column, Database, Schema};
 use crate::value::Value;
 
@@ -109,9 +110,27 @@ fn select(
     limit: Option<usize>,
 ) -> Result<QueryResult> {
     let schema = db.schema(table)?;
+    if let Projection::Aggregates(items) = &projection {
+        let rows = matching_rows(db, &schema, &filter)?;
+        let mut columns = Vec::new();
+        let mut values = Vec::new();
+        for item in items {
+            let index = match &item.column {
+                Some(name) => Some(column_position(&schema, name)?),
+                None => None,
+            };
+            columns.push(item.label());
+            match aggregate::evaluate(item.func, index, &rows) {
+                Ok(value) => values.push(value),
+                Err(message) => return fail(message),
+            }
+        }
+        return Ok(QueryResult { columns, rows: vec![values], affected: 0 });
+    }
     let names: Vec<String> = match projection {
         Projection::All => schema.columns.iter().map(|c| c.name.clone()).collect(),
         Projection::Columns(names) => names,
+        Projection::Aggregates(_) => Vec::new(),
     };
     let mut indexes = Vec::new();
     for name in &names {

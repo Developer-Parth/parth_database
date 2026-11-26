@@ -1,4 +1,5 @@
 
+pub mod aggregate;
 pub mod btree;
 pub mod crc;
 pub mod disk;
