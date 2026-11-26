@@ -1,5 +1,5 @@
 (function () {
-  var state = { base: "", token: "", table: "", page: 1 };
+  var state = { base: "", token: "", table: "", page: 1, seq: 0 };
   var el = function (id) { return document.getElementById(id); };
 
   function setStatus(text, kind) {
@@ -100,10 +100,15 @@
   function loadRows(name, columns, page) {
     state.table = name;
     state.page = page || 1;
+    state.seq += 1;
+    var seq = state.seq;
     el("view-title").textContent = "Rows: " + name;
     el("schema").textContent = describeColumns(columns);
     var query = "?limit=" + PAGE_SIZE + "&offset=" + pageOffset(state.page, PAGE_SIZE);
     request("GET", "/api/tables/" + encodeURIComponent(name) + "/rows" + query).then(function (data) {
+      if (seq !== state.seq) {
+        return;
+      }
       if (state.page > pageCount(data.total, PAGE_SIZE)) {
         loadRows(name, columns, clampPage(state.page, data.total, PAGE_SIZE));
         return;
@@ -114,7 +119,11 @@
       Array.prototype.forEach.call(buttons, function (b) {
         b.className = b.dataset.name === name ? "active" : "";
       });
-    }).catch(showError);
+    }).catch(function (error) {
+      if (seq === state.seq) {
+        showError(error);
+      }
+    });
   }
 
   function loadTables() {
