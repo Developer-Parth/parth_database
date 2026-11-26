@@ -82,6 +82,7 @@ fn total(func: AggFunc, values: &[&Value]) -> Result<Value, String> {
         return Ok(Value::Null);
     }
     let mut int_sum: Option<i64> = Some(0);
+    let mut saw_real = false;
     let mut real_sum = 0.0f64;
     for value in values {
         match value {
@@ -90,17 +91,23 @@ fn total(func: AggFunc, values: &[&Value]) -> Result<Value, String> {
                 real_sum += *n as f64;
             }
             Value::Real(r) => {
-                int_sum = None;
+                saw_real = true;
                 real_sum += *r;
             }
             _ => return Err(format!("{} needs a numeric column", func.name())),
         }
     }
+    if !real_sum.is_finite() {
+        return Err("result is not a finite number".to_string());
+    }
     if func == AggFunc::Avg {
         return Ok(Value::Real(real_sum / values.len() as f64));
     }
+    if saw_real {
+        return Ok(Value::Real(real_sum));
+    }
     match int_sum {
         Some(sum) => Ok(Value::Int(sum)),
-        None => Ok(Value::Real(real_sum)),
+        None => Err("integer overflow in SUM".to_string()),
     }
 }

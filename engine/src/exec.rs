@@ -111,6 +111,9 @@ fn select(
 ) -> Result<QueryResult> {
     let schema = db.schema(table)?;
     if let Projection::Aggregates(items) = &projection {
+        if order_by.is_some() {
+            return fail("ORDER BY is not supported with aggregates");
+        }
         let rows = matching_rows(db, &schema, &filter)?;
         let mut columns = Vec::new();
         let mut values = Vec::new();
@@ -125,7 +128,8 @@ fn select(
                 Err(message) => return fail(message),
             }
         }
-        return Ok(QueryResult { columns, rows: vec![values], affected: 0 });
+        let rows = if limit == Some(0) { Vec::new() } else { vec![values] };
+        return Ok(QueryResult { columns, rows, affected: 0 });
     }
     let names: Vec<String> = match projection {
         Projection::All => schema.columns.iter().map(|c| c.name.clone()).collect(),

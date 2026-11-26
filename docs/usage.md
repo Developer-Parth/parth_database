@@ -71,3 +71,18 @@ ROP TABLE notes
 Column 
 
 types are INT, REAL, TEXT and BOOL. Every table needs exactly one PRIMARY KEY column. A row must fit in 1000 bytes. There are no transactions, JOINs or GROUP BY.
+
+## Aggregates
+
+SELECT accepts COUNT, SUM, MIN, MAX and AVG, alone or combined in one select list:
+
+    SELECT COUNT(*), MIN(age), MAX(age) FROM users WHERE score > 1;
+
+Rules that are tested:
+
+- The result is always one row, with columns named like count(*) and min(age).
+- NULL values are skipped. COUNT(*) counts every matching row. With no matching rows COUNT is 0 and the others are NULL.
+- SUM of INT columns is INT and fails with an error on integer overflow. AVG is REAL. A REAL result that is not finite is an error.
+- SUM and AVG need a numeric column. Only COUNT accepts *.
+- LIMIT 0 returns no rows, any larger LIMIT returns the one row.
+- ORDER BY is rejected with aggregates. Mixing plain columns with aggregates is rejected. GROUP BY is not supported yet.
