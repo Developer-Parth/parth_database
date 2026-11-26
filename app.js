@@ -26,6 +26,7 @@
         }
         document.body.classList.remove("stale");
         setStatus("Connected to " + state.base, "on");
+      switchHistory();
         return data;
       });
     });
@@ -188,9 +189,14 @@ function renderHistory() {
   });
 }
 
+function switchHistory() {
+  queryHistory = isRemembering(getStorage()) ? loadHistory(getStorage(), state.base) : [];
+  renderHistory();
+}
+
 function rememberQuery(sql) {
   queryHistory = pushHistory(queryHistory, sql);
-  saveHistory(getStorage(), queryHistory);
+  if (isRemembering(getStorage())) { saveHistory(getStorage(), state.base, queryHistory); }
   renderHistory();
 }
 
@@ -221,6 +227,7 @@ function runSql() {
       return loadTables();
     }).then(function () {
       setStatus("Connected to " + state.base, "on");
+      switchHistory();
     }).catch(function (err) {
       state.token = "";
       showError(err);
@@ -239,10 +246,20 @@ function runSql() {
   });
   el("clear-history").addEventListener("click", function () {
     queryHistory = [];
-    saveHistory(getStorage(), queryHistory);
+    saveHistory(getStorage(), state.base, queryHistory);
     renderHistory();
   });
-  queryHistory = loadHistory(getStorage());
+  queryHistory = [];
+  el("remember").checked = isRemembering(getStorage());
+  el("remember").addEventListener("change", function () {
+    var storage = getStorage();
+    setRemembering(storage, el("remember").checked);
+    if (el("remember").checked) {
+      saveHistory(storage, state.base, queryHistory);
+    } else {
+      forgetAll(storage);
+    }
+  });
   renderHistory();
   el("sql").addEventListener("keydown", function (event) {
     if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
