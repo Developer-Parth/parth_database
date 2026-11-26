@@ -8,6 +8,7 @@ pub mod exec;
 pub mod json;
 pub mod lexer;
 pub mod mutate;
+pub mod overflow;
 pub mod parser;
 pub mod server;
 pub mod store;

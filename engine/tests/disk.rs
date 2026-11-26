@@ -109,7 +109,7 @@ fn leftover_partial_migration_file_is_ignored_and_redone() {
 }
 
 #[test]
-fn database_rows_persist_and_oversized_rows_are_rejected() {
+fn database_rows_persist_and_large_rows_are_stored() {
     let d = tmpdir("db");
     let schema = Schema {
         name: "notes".into(),
@@ -123,12 +123,12 @@ fn database_rows_persist_and_oversized_rows_are_rejected() {
             db.insert("notes", &[Value::Int(i), Value::Text(format!("note number {i}"))]).unwrap();
         }
         let big = Value::Text("x".repeat(3000));
-        assert!(matches!(db.insert("notes", &[Value::Int(5000), big]), Err(Error::InvalidInput(_))));
-        assert!(db.get("notes", &Value::Int(5000)).unwrap().is_none());
+        db.insert("notes", &[Value::Int(5000), big]).unwrap();
+        assert!(matches!(db.insert("notes", &[Value::Int(6000), Value::Text("x".repeat(2000000))]), Err(Error::InvalidInput(_))));
     }
     let db = Database::open(&d).unwrap();
-    assert_eq!(db.scan("notes").unwrap().len(), 800);
+    assert_eq!(db.scan("notes").unwrap().len(), 801);
     assert!(db.get("notes", &Value::Int(799)).unwrap().is_some());
-    assert_eq!(db.store().check().unwrap().entries, 801);
+    db.store().check().unwrap();
     let _ = fs::remove_dir_all(&d);
 }

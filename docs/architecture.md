@@ -13,7 +13,13 @@
 - Column types: INT, REAL, TEXT, BOOL. A single primary key column is used as the B-tree key.
 
 ## Limits
-- A row is at most 1000 bytes and a key at most 500 bytes. There are no overflow pages.
+- A key is at most 500 bytes. A row value is at most 1 MiB (1048576 bytes) of storage. This is separate from the 1 MB HTTP request body limit.
+
+## Large values
+- Values over 700 bytes, and any value that starts with four 0xFF bytes, are stored as a 20-byte head plus 900-byte chunks under reserved keys that start with the bytes 0x00 0x4F. The head holds the length, a blob id and a CRC32 of the whole value. A counter record under the bytes 0x00 0x4E holds the next blob id and the chunk count.
+- A put, replace or delete changes the head, its chunks and the counter in the same B+tree commit, so a crash or a rolled back transaction leaves no orphan chunks. Keys that start with 0x00 0x4E or 0x00 0x4F are rejected, and scans and counts hide the reserved range.
+- check() verifies chunk key shape, lengths, checksums, missing or extra chunks and the recorded chunk count, and reports Corrupt on any mismatch.
+- A database that holds only small values keeps the old layout. Downgrading to an older build after storing a large value is not supported. Reading the old row decoder shows it returns a decode error for such a head instead of looping, but no old binary was run against a new file.
 - Internal B-tree nodes are not merged after deletes.
 - One writer at a time. No multi-statement transactions.
 - No JOIN, GROUP BY, aggregates, secondary indexes or ALTER.

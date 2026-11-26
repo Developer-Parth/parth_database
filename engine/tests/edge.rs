@@ -73,7 +73,7 @@ fn oversized_row_is_rejected_without_changing_table() {
     let db = Database::open(&dir).unwrap();
     q(&db, "CREATE TABLE t (id INT PRIMARY KEY, label TEXT)");
     q(&db, "INSERT INTO t VALUES (1, 'small')");
-    let big = "x".repeat(5000);
+    let big = "x".repeat(2000000);
     assert!(execute(&db, &format!("INSERT INTO t VALUES (2, '{big}')")).is_err());
     assert_eq!(count(&db, "t"), 1);
     let _ = std::fs::remove_dir_all(&dir);

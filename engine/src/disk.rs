@@ -1,6 +1,7 @@
 use crate::btree::{BTree, TreeReport};
+use crate::overflow;
 use crate::error::{Error, Result};
-use crate::store::{Batch, Op, Options, Store};
+use crate::store::{Batch, Options, Store};
 use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -83,12 +84,23 @@ impl DiskStore {
         self.inner.tree.lock().unwrap_or_else(|p| p.into_inner())
     }
 
+    fn read_logical(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
+        if overflow::is_reserved(key) {
+            return Ok(None);
+        }
+        let mut tree = self.tree();
+        match tree.get(key)? {
+            Some(v) => Ok(Some(overflow::read(&mut tree, v)?)),
+            None => Ok(None),
+        }
+    }
+
     pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
-        self.tree().get(key)
+        self.read_logical(key)
     }
 
     pub fn contains(&self, key: &[u8]) -> Result<bool> {
-        Ok(self.tree().get(key)?.is_some())
+        Ok(self.get(key)?.is_some())
     }
 
     pub fn put(&self, key: impl Into<Vec<u8>>, value: impl Into<Vec<u8>>) -> Result<()> {
@@ -107,19 +119,13 @@ impl DiskStore {
         if batch.is_empty() {
             return Ok(());
         }
-        let ops: Vec<(Vec<u8>, Option<Vec<u8>>)> = batch
-            .ops()
-            .iter()
-            .map(|op| match op {
-                Op::Put(k, v) => (k.clone(), Some(v.clone())),
-                Op::Delete(k) => (k.clone(), None),
-            })
-            .collect();
-        self.tree().apply(&ops)
+        let mut tree = self.tree();
+        let planned = overflow::plan(&mut tree, &batch)?;
+        tree.apply(&planned)
     }
 
     pub fn range(&self, start: Option<&[u8]>, end: Option<&[u8]>, limit: usize) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
-        self.tree().range(start, end, limit)
+        overflow::visible_range(&mut self.tree(), start, end, limit)
     }
 
     pub fn scan_prefix(&self, prefix: &[u8], limit: usize) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
@@ -128,7 +134,11 @@ impl DiskStore {
     }
 
     pub fn len(&self) -> u64 {
-        self.tree().len()
+        {
+            let mut tree = self.tree();
+            let raw = tree.len();
+            overflow::logical_len(&mut tree).unwrap_or(raw)
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -136,6 +146,11 @@ impl DiskStore {
     }
 
     pub fn check(&self) -> Result<TreeReport> {
-        self.tree().check()
+        {
+            let mut tree = self.tree();
+            let report = tree.check()?;
+            overflow::verify(&mut tree)?;
+            Ok(report)
+        }
     }
 }
