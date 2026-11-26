@@ -38,8 +38,8 @@ pub fn run(db: &Database, statement: Statement) -> Result<QueryResult> {
             Ok(QueryResult::affected(0))
         }
         Statement::Insert { table, columns, rows } => insert(db, &table, columns, rows),
-        Statement::Select { table, projection, filter, order_by, limit } => {
-            select(db, &table, projection, filter, order_by, limit)
+        Statement::Select { table, projection, filter, group_by, order_by, limit } => {
+            select(db, &table, projection, filter, group_by, order_by, limit)
         }
         Statement::Update { table, sets, filter } => update(db, &table, sets, filter),
         Statement::Delete { table, filter } => delete(db, &table, filter),
@@ -106,10 +106,14 @@ fn select(
     table: &str,
     projection: Projection,
     filter: Option<Expr>,
+    group_by: Vec<String>,
     order_by: Option<(String, bool)>,
     limit: Option<usize>,
 ) -> Result<QueryResult> {
     let schema = db.schema(table)?;
+    if !group_by.is_empty() || matches!(projection, Projection::Items(_)) {
+        return grouped_select(db, &schema, &projection, filter, &group_by, order_by, limit);
+    }
     if let Projection::Aggregates(items) = &projection {
         if order_by.is_some() {
             return fail("ORDER BY is not supported with aggregates");
@@ -135,6 +139,7 @@ fn select(
         Projection::All => schema.columns.iter().map(|c| c.name.clone()).collect(),
         Projection::Columns(names) => names,
         Projection::Aggregates(_) => Vec::new(),
+        Projection::Items(_) => Vec::new(),
     };
     let mut indexes = Vec::new();
     for name in &names {
@@ -163,6 +168,132 @@ fn select(
         .map(|row| indexes.iter().map(|i| row[*i].clone()).collect())
         .collect();
     Ok(QueryResult { columns: names, rows, affected: 0 })
+}
+
+fn compare_keys(keys: &[usize], a: &[crate::value::Value], b: &[crate::value::Value]) -> std::cmp::Ordering {
+    for &key in keys {
+        let ordering = a[key].compare(&b[key]);
+        if ordering != std::cmp::Ordering::Equal {
+            return ordering;
+        }
+    }
+    std::cmp::Ordering::Equal
+}
+
+fn grouped_select(
+    db: &Database,
+    schema: &Schema,
+    projection: &Projection,
+    filter: Option<Expr>,
+    group_by: &[String],
+    order_by: Option<(String, bool)>,
+    limit: Option<usize>,
+) -> Result<QueryResult> {
+    let items: Vec<crate::aggregate::SelectItem> = match projection {
+        Projection::All => return fail("SELECT * is not supported with GROUP BY"),
+        Projection::Columns(names) => names
+            .iter()
+            .cloned()
+            .map(crate::aggregate::SelectItem::Column)
+            .collect(),
+        Projection::Aggregates(list) => list
+            .iter()
+            .cloned()
+            .map(crate::aggregate::SelectItem::Agg)
+            .collect(),
+        Projection::Items(items) => items.clone(),
+    };
+    if group_by.is_empty() {
+        return fail("columns can only be selected next to aggregates when GROUP BY names them");
+    }
+    let mut keys = Vec::new();
+    for name in group_by {
+        let position = column_position(schema, name)?;
+        if !keys.contains(&position) {
+            keys.push(position);
+        }
+    }
+    let mut columns = Vec::new();
+    let mut plan = Vec::new();
+    for item in &items {
+        match item {
+            crate::aggregate::SelectItem::Column(name) => {
+                let position = column_position(schema, name)?;
+                if !keys.contains(&position) {
+                    return fail(format!("column {name} must appear in GROUP BY"));
+                }
+                columns.push(name.clone());
+                plan.push((None, Some(position)));
+            }
+            crate::aggregate::SelectItem::Agg(aggregate) => {
+                let index = match &aggregate.column {
+                    Some(name) => Some(column_position(schema, name)?),
+                    None => None,
+                };
+                columns.push(aggregate.label());
+                plan.push((Some(aggregate.func), index));
+            }
+        }
+    }
+    let order = match &order_by {
+        Some((name, descending)) => {
+            let position = column_position(schema, name)?;
+            if !keys.contains(&position) {
+                return fail("ORDER BY with GROUP BY must name a grouping column");
+            }
+            match plan
+                .iter()
+                .position(|(func, index)| func.is_none() && *index == Some(position))
+            {
+                Some(output) => Some((output, *descending)),
+                None => return fail("ORDER BY column must be in the select list"),
+            }
+        }
+        None => None,
+    };
+    let mut rows = matching_rows(db, schema, &filter)?;
+    rows.sort_by(|a, b| compare_keys(&keys, a, b));
+    let mut output: Vec<Vec<crate::value::Value>> = Vec::new();
+    let mut start = 0;
+    while start < rows.len() {
+        let mut end = start + 1;
+        while end < rows.len()
+            && compare_keys(&keys, &rows[start], &rows[end]) == std::cmp::Ordering::Equal
+        {
+            end += 1;
+        }
+        let group = &rows[start..end];
+        let mut line = Vec::new();
+        for (func, index) in &plan {
+            match func {
+                Some(func) => match aggregate::evaluate(*func, *index, group) {
+                    Ok(value) => line.push(value),
+                    Err(message) => return fail(message),
+                },
+                None => line.push(
+                    index
+                        .map(|i| group[0][i].clone())
+                        .unwrap_or(crate::value::Value::Null),
+                ),
+            }
+        }
+        output.push(line);
+        start = end;
+    }
+    if let Some((position, descending)) = order {
+        output.sort_by(|a, b| {
+            let ordering = a[position].compare(&b[position]);
+            if descending {
+                ordering.reverse()
+            } else {
+                ordering
+            }
+        });
+    }
+    if let Some(limit) = limit {
+        output.truncate(limit);
+    }
+    Ok(QueryResult { columns, rows: output, affected: 0 })
 }
 
 fn update(db: &Database, table: &str, sets: Vec<(String, Expr)>, filter: Option<Expr>) -> Result<QueryResult> {

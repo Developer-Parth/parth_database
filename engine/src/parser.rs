@@ -1,7 +1,7 @@
 use crate::error::{Error, Result};
 use crate::lexer::{tokenize, Token};
 use crate::table::ColumnType;
-use crate::aggregate::{AggFunc, Aggregate};
+use crate::aggregate::{AggFunc, Aggregate, SelectItem};
 use crate::value::Value;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -40,6 +40,7 @@ pub struct ColumnDef {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Projection {
     Aggregates(Vec<Aggregate>),
+    Items(Vec<SelectItem>),
     All,
     Columns(Vec<String>),
 }
@@ -53,6 +54,7 @@ pub enum Statement {
         table: String,
         projection: Projection,
         filter: Option<Expr>,
+        group_by: Vec<String>,
         order_by: Option<(String, bool)>,
         limit: Option<usize>,
     },
@@ -218,15 +220,44 @@ impl Parser {
         found
     }
 
-    fn aggregate_list(&mut self) -> Result<Vec<Aggregate>> {
-        let mut items = vec![self.aggregate()?];
-        while self.eat_symbol(",") {
-            items.push(self.aggregate()?);
+    fn select_items(&mut self) -> Result<Projection> {
+        let mut items = Vec::new();
+        loop {
+            if self.aggregate_ahead() {
+                items.push(SelectItem::Agg(self.aggregate()?));
+            } else {
+                items.push(SelectItem::Column(self.identifier()?));
+            }
+            if !self.eat_symbol(",") {
+                break;
+            }
         }
-        Ok(items)
-    }
-
-    fn aggregate(&mut self) -> Result<Aggregate> {
+        let aggregates = items
+            .iter()
+            .filter(|item| matches!(item, SelectItem::Agg(_)))
+            .count();
+        if aggregates == items.len() {
+            let list = items
+                .into_iter()
+                .filter_map(|item| match item {
+                    SelectItem::Agg(aggregate) => Some(aggregate),
+                    SelectItem::Column(_) => None,
+                })
+                .collect();
+            Ok(Projection::Aggregates(list))
+        } else if aggregates == 0 {
+            let names = items
+                .into_iter()
+                .filter_map(|item| match item {
+                    SelectItem::Column(name) => Some(name),
+                    SelectItem::Agg(_) => None,
+                })
+                .collect();
+            Ok(Projection::Columns(names))
+        } else {
+            Ok(Projection::Items(items))
+        }
+    }    fn aggregate(&mut self) -> Result<Aggregate> {
         let name = self.identifier()?;
         let func = match AggFunc::parse(&name) {
             Some(func) => func,
@@ -281,16 +312,22 @@ impl Parser {
     }
 
     fn select(&mut self) -> Result<Statement> {
-        let projection = if self.aggregate_ahead() {
-            Projection::Aggregates(self.aggregate_list()?)
-        } else if self.eat_symbol("*") {
+        let projection = if self.eat_symbol("*") {
             Projection::All
         } else {
-            Projection::Columns(self.name_list()?)
-        };
-        self.expect_keyword("FROM")?;
+            self.select_items()?
+        };        self.expect_keyword("FROM")?;
         let table = self.identifier()?;
         let filter = self.where_clause()?;
+        let group_by = if self.eat_keyword("GROUP") {
+            self.expect_keyword("BY")?;
+            self.name_list()?
+        } else {
+            Vec::new()
+        };
+        if self.eat_keyword("HAVING") {
+            return fail("HAVING is not supported");
+        }
         let order_by = if self.eat_keyword("ORDER") {
             self.expect_keyword("BY")?;
             let column = self.identifier()?;
@@ -316,7 +353,7 @@ impl Parser {
         } else {
             None
         };
-        Ok(Statement::Select { table, projection, filter, order_by, limit })
+        Ok(Statement::Select { table, projection, filter, group_by, order_by, limit })
     }
 
     fn update(&mut self) -> Result<Statement> {
@@ -516,7 +553,8 @@ mod tests {
                 table: "t".into(),
                 projection: Projection::Columns(vec!["name".into()]),
                 filter: Some(Expr::Binary(BinOp::Ge, col("id"), int(2))),
-                order_by: Some(("name".into(), true)),
+            group_by: Vec::new(),
+            order_by: Some(("name".into(), true)),
                 limit: Some(5),
             }
         );

@@ -108,3 +108,11 @@ Rules that are tested:
 ## Transactions in the web page
 
 A script that starts with BEGIN and ends with COMMIT or ROLLBACK can be pasted into the SQL box, one statement per line or all on one line. The page shows "Committed" or "Rolled back" with the statement count, then the result of each statement in order. After a ROLLBACK every statement line is labelled "rolled back, not saved", because those rows existed only inside the discarded transaction. A failing statement rejects the whole script and nothing is saved.
+## GROUP BY
+
+`SELECT region, COUNT(*), SUM(qty) FROM sales WHERE qty > 0 GROUP BY region ORDER BY region DESC LIMIT 5`
+
+- Every plain column in the select list must appear in GROUP BY. Several grouping columns are allowed.
+- COUNT, SUM, MIN, MAX and AVG are computed per group. WHERE filters rows before grouping.
+- Groups come back in ascending order of the grouping key. ORDER BY may only name a grouping column that is in the select list. LIMIT applies to groups.
+- Rejected with an error: SELECT * with GROUP BY, a column next to an aggregate without GROUP BY, a column missing from GROUP BY, and HAVING.

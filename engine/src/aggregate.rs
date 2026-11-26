@@ -111,3 +111,9 @@ fn total(func: AggFunc, values: &[&Value]) -> Result<Value, String> {
         None => Err("integer overflow in SUM".to_string()),
     }
 }
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum SelectItem {
+    Column(String),
+    Agg(Aggregate),
+}
