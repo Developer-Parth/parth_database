@@ -38,8 +38,8 @@ pub fn run(db: &Database, statement: Statement) -> Result<QueryResult> {
             Ok(QueryResult::affected(0))
         }
         Statement::Insert { table, columns, rows } => insert(db, &table, columns, rows),
-        Statement::Select { table, projection, filter, group_by, order_by, limit } => {
-            select(db, &table, projection, filter, group_by, order_by, limit)
+        Statement::Select { table, projection, filter, group_by, order_by, limit, offset } => {
+            select(db, &table, projection, filter, group_by, order_by, limit, offset)
         }
         Statement::Update { table, sets, filter } => update(db, &table, sets, filter),
         Statement::Delete { table, filter } => delete(db, &table, filter),
@@ -109,10 +109,11 @@ fn select(
     group_by: Vec<String>,
     order_by: Option<(String, bool)>,
     limit: Option<usize>,
+    offset: usize,
 ) -> Result<QueryResult> {
     let schema = db.schema(table)?;
     if !group_by.is_empty() || matches!(projection, Projection::Items(_)) {
-        return grouped_select(db, &schema, &projection, filter, &group_by, order_by, limit);
+        return grouped_select(db, &schema, &projection, filter, &group_by, order_by, limit, offset);
     }
     if let Projection::Aggregates(items) = &projection {
         if order_by.is_some() {
@@ -132,7 +133,7 @@ fn select(
                 Err(message) => return fail(message),
             }
         }
-        let rows = if limit == Some(0) { Vec::new() } else { vec![values] };
+        let rows = if limit == Some(0) || offset > 0 { Vec::new() } else { vec![values] };
         return Ok(QueryResult { columns, rows, affected: 0 });
     }
     let names: Vec<String> = match projection {
@@ -160,6 +161,7 @@ fn select(
             }
         });
     }
+    rows.drain(..offset.min(rows.len()));
     if let Some(limit) = limit {
         rows.truncate(limit);
     }
@@ -188,6 +190,7 @@ fn grouped_select(
     group_by: &[String],
     order_by: Option<(String, bool)>,
     limit: Option<usize>,
+    offset: usize,
 ) -> Result<QueryResult> {
     let items: Vec<crate::aggregate::SelectItem> = match projection {
         Projection::All => return fail("SELECT * is not supported with GROUP BY"),
@@ -290,6 +293,7 @@ fn grouped_select(
             }
         });
     }
+    output.drain(..offset.min(output.len()));
     if let Some(limit) = limit {
         output.truncate(limit);
     }

@@ -171,3 +171,33 @@ fn sql_data_survives_reopen() {
     assert_eq!(rows, vec![vec![Value::Int(2), Value::Text("z".into())]]);
     let _ = std::fs::remove_dir_all(&dir);
 }
+#[test]
+fn offset_pages_through_ordered_rows() {
+    let (db, dir) = seeded("offset");
+    assert_eq!(ints(&q(&db, "SELECT id FROM users ORDER BY id LIMIT 2 OFFSET 1"), 0), vec![2, 3]);
+    assert_eq!(ints(&q(&db, "SELECT id FROM users ORDER BY id LIMIT 2 OFFSET 3"), 0), vec![4]);
+    assert_eq!(ints(&q(&db, "SELECT id FROM users ORDER BY id DESC LIMIT 2 OFFSET 2"), 0), vec![2, 1]);
+    assert_eq!(ints(&q(&db, "SELECT id FROM users ORDER BY id OFFSET 2"), 0), vec![3, 4]);
+    assert_eq!(ints(&q(&db, "SELECT id FROM users ORDER BY id LIMIT 10 OFFSET 0"), 0), vec![1, 2, 3, 4]);
+    assert!(q(&db, "SELECT id FROM users ORDER BY id LIMIT 2 OFFSET 10").rows.is_empty());
+    assert!(q(&db, "SELECT id FROM users LIMIT 0 OFFSET 1").rows.is_empty());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn offset_applies_to_groups_and_aggregates() {
+    let (db, dir) = seeded("offset_groups");
+    assert_eq!(ints(&q(&db, "SELECT age FROM users WHERE age > 0 GROUP BY age ORDER BY age LIMIT 1 OFFSET 1"), 0), vec![41]);
+    assert_eq!(q(&db, "SELECT COUNT(*) FROM users OFFSET 0").rows.len(), 1);
+    assert!(q(&db, "SELECT COUNT(*) FROM users OFFSET 1").rows.is_empty());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn offset_rejects_invalid_values() {
+    let (db, dir) = seeded("offset_bad");
+    assert!(execute(&db, "SELECT id FROM users LIMIT 1 OFFSET -1").is_err());
+    assert!(execute(&db, "SELECT id FROM users LIMIT 1 OFFSET 'x'").is_err());
+    assert!(execute(&db, "SELECT id FROM users LIMIT 1 OFFSET").is_err());
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -56,7 +56,7 @@ pub enum Statement {
         filter: Option<Expr>,
         group_by: Vec<String>,
         order_by: Option<(String, bool)>,
-        limit: Option<usize>,
+        limit: Option<usize>, offset: usize,
     },
     Update { table: String, sets: Vec<(String, Expr)>, filter: Option<Expr> },
     Delete { table: String, filter: Option<Expr> },
@@ -353,7 +353,19 @@ impl Parser {
         } else {
             None
         };
-        Ok(Statement::Select { table, projection, filter, group_by, order_by, limit })
+        let offset = if self.eat_keyword("OFFSET") {
+            match self.peek() {
+                Some(Token::Int(n)) if *n >= 0 => {
+                    let n = *n as usize;
+                    self.pos += 1;
+                    n
+                }
+                _ => return fail("OFFSET needs a non-negative integer"),
+            }
+        } else {
+            0
+        };
+        Ok(Statement::Select { table, projection, filter, group_by, order_by, limit, offset })
     }
 
     fn update(&mut self) -> Result<Statement> {
@@ -555,7 +567,7 @@ mod tests {
                 filter: Some(Expr::Binary(BinOp::Ge, col("id"), int(2))),
             group_by: Vec::new(),
             order_by: Some(("name".into(), true)),
-                limit: Some(5),
+                limit: Some(5), offset: 0,
             }
         );
     }
