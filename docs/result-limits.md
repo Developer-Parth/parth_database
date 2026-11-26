@@ -22,10 +22,18 @@ Remaining unbounded paths
 
 These are not bounded yet and the cap does not protect them:
 
-All matching rows are materialised in memory before ordering, grouping, offset and the cap are applied.
+All matching rows are materialised in memory before ordering, grouping, offset and the cap are applied. Aggregates without GROUP BY are the exception, described below.
 Wide values (large TEXT values) are not bounded by the row cap. 10000 wide rows can still be a large response.
-ORDER BY, GROUP BY and aggregates read every matching row.
+ORDER BY and GROUP BY read every matching row.
 There is no byte limit on a response.
+
+Bounded aggregate scan
+
+Aggregates without GROUP BY visit rows in chunks of 64 under one store lock. The scan sees a single consistent state and a concurrent writer waits until it finishes. The scan stops with an error above 1000000 rows or 128 MiB of encoded row data.
+
+The byte figure is an encoded-size budget, not a cap on heap use. Overflow values up to 1 MiB are read whole, so one chunk can briefly hold about 64 MiB.
+
+Inside a transaction with pending writes the scan falls back to the merged read and is not bounded. Plain SELECT, GROUP BY, ORDER BY, UPDATE and DELETE are not covered and keep their original scan. The visitor must not call back into the store.
 
 Request bodies are limited to 1 MB and request headers to 16 KB.
 
