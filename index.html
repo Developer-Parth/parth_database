@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>parth_database</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>parth_database</h1>
+  <form id="connect">
+    <label>Server <input id="server" type="url" value="http://127.0.0.1:8787" required></label>
+    <label>Token <input id="token" type="password" autocomplete="off" minlength="16" required></label>
+    <button type="submit">Connect</button>
+    <span id="status" class="status off">Not connected</span>
+  </form>
+</header>
+<main>
+  <aside>
+    <h2>Tables</h2>
+    <ul id="tables"></ul>
+    <p id="tables-empty" class="muted">Connect to list tables.</p>
+  </aside>
+  <section>
+    <h2 id="view-title">Rows</h2>
+    <div id="schema" class="muted"></div>
+    <div id="rows-wrap" class="grid-wrap"></div>
+    <h2>SQL</h2>
+    <textarea id="sql" rows="5" spellcheck="false" placeholder="SELECT * FROM t"></textarea>
+    <div class="bar">
+      <button id="run" type="button">Run (Ctrl+Enter)</button>
+      <span id="message" class="muted"></span>
+    </div>
+    <div id="result-wrap" class="grid-wrap"></div>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
