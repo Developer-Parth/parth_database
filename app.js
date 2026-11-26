@@ -36,6 +36,7 @@
       td.className = "null";
     } else {
       td.textContent = String(value);
+      td.title = String(value);
     }
     return td;
   }
