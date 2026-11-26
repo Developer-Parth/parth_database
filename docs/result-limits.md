@@ -33,7 +33,9 @@ Aggregates without GROUP BY visit rows in chunks of 64 under one store lock. The
 
 The byte figure is an encoded-size budget, not a cap on heap use. Overflow values up to 1 MiB are read whole, so one chunk can briefly hold about 64 MiB.
 
-Inside a transaction with pending writes the scan falls back to the merged read and is not bounded. Plain SELECT, GROUP BY, ORDER BY, UPDATE and DELETE are not covered and keep their original scan. The visitor must not call back into the store.
+Inside a transaction with pending writes the scan falls back to the merged read and is not bounded. GROUP BY, ORDER BY, UPDATE and DELETE are not covered and keep their original scan. The visitor must not call back into the store.
+
+A plain SELECT without ORDER BY, GROUP BY or aggregates scans in chunks of 64. It skips OFFSET rows without keeping them and stops once it holds the 10000 row cap plus one extra row, which is how truncation is detected. A filter error on a row after that point is not raised because the row is never read. Inside a transaction with pending writes the store still builds the merged state in full before the scan, so that case is not bounded in memory, although the scan stops early.
 
 Request bodies are limited to 1 MB and request headers to 16 KB.
 
