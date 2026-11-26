@@ -75,6 +75,22 @@ fn filter_and_offset_apply_before_the_cap() {
 }
 
 #[test]
+fn plain_select_window_boundary_at_the_cap() {
+let db = big_table("boundary");
+let exact = q(&db, "SELECT id FROM t LIMIT 10000");
+assert_eq!(exact.rows.len(), MAX_RESULT_ROWS);
+assert!(!exact.truncated);
+let over = q(&db, "SELECT id FROM t LIMIT 10001");
+assert_eq!(over.rows.len(), MAX_RESULT_ROWS);
+assert!(over.truncated);
+let fits = q(&db, "SELECT id FROM t OFFSET 50");
+assert_eq!(fits.rows.len(), MAX_RESULT_ROWS);
+assert!(!fits.truncated);
+let spills = q(&db, "SELECT id FROM t OFFSET 49");
+assert_eq!(spills.rows.len(), MAX_RESULT_ROWS);
+assert!(spills.truncated);
+}
+#[test]
 fn grouped_result_is_capped_and_flagged() {
     let db = big_table("group");
     let r = q(&db, "SELECT id, COUNT(*) FROM t GROUP BY id");
