@@ -47,3 +47,20 @@ fn plain_select_window_still_rejects_unknown_columns() {
 let db = table_of("badcol", 5);
 assert!(execute(&db, "SELECT id FROM t WHERE nope = 1 LIMIT 2").is_err());
 }
+
+#[test]
+fn small_windows_report_rows_without_truncation() {
+let db = table_of("smallwin", 3);
+let limited = execute(&db, "SELECT id FROM t LIMIT 2").unwrap();
+assert_eq!(limited.rows.len(), 2);
+assert!(!limited.truncated);
+let exact = execute(&db, "SELECT id FROM t LIMIT 3").unwrap();
+assert_eq!(exact.rows.len(), 3);
+assert!(!exact.truncated);
+let past = execute(&db, "SELECT id FROM t LIMIT 5 OFFSET 9").unwrap();
+assert!(past.rows.is_empty());
+assert!(!past.truncated);
+let zero = execute(&db, "SELECT id FROM t LIMIT 0").unwrap();
+assert!(zero.rows.is_empty());
+assert!(!zero.truncated);
+}
