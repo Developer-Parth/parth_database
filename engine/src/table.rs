@@ -272,6 +272,12 @@ impl Database {
             .map(|(_, v)| decode_row(&v).map_err(corrupt))
             .collect()
     }
+pub fn scan_each<F: FnMut(Vec<Value>, usize) -> Result<bool>>(&self, table: &str, chunk: usize, mut visit: F) -> Result<()> {
+self.schema(table)?;
+self.store.scan_prefix_each(&table_prefix(table), chunk, |_, value| {
+let row = decode_row(value).map_err(corrupt)?;
+visit(row, value.len())
+})}
 }
 
 #[cfg(test)]

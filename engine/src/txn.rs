@@ -121,6 +121,16 @@ impl Kv {
         }
         Ok(merged.into_iter().take(limit).collect())
     }
+
+pub fn scan_prefix_each<F: FnMut(&[u8], &[u8]) -> Result<bool>>(&self, prefix: &[u8], chunk: usize, mut visit: F) -> Result<()> {
+if self.pending().is_some() {
+for (key, value) in self.scan_prefix(prefix, usize::MAX)? {
+if !visit(&key, &value)? { return Ok(()); }
+}
+return Ok(());
+}
+self.disk.scan_prefix_each(prefix, chunk, visit)
+}
 }
 
 impl Database {

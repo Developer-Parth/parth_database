@@ -85,21 +85,52 @@ fn insert(db: &Database, table: &str, columns: Option<Vec<String>>, rows: Vec<Ve
     Ok(QueryResult::affected(full_rows.len()))
 }
 
+pub const MAX_MATERIALIZED_ROWS: usize = 1_000_000;
+
+pub const MAX_MATERIALIZED_BYTES: usize = 128 * 1024 * 1024;
+
+pub fn bounded_rows(db: &Database, table: &str, max_rows: usize, max_bytes: usize) -> Result<Vec<Vec<Value>>> {
+let schema = db.schema(table)?;
+matching_rows_limited(db, &schema, &None, Some((max_rows, max_bytes)))
+}
 fn matching_rows(db: &Database, schema: &Schema, filter: &Option<Expr>) -> Result<Vec<Vec<Value>>> {
-    if let Some(expr) = filter {
+if let Some(expr) = filter {
+check_columns(expr, schema)?;
+}
+let mut matched = Vec::new();
+for row in db.scan(&schema.name)? {
+let keep = match filter {
+Some(expr) => passes(expr, schema, &row)?,
+None => true,
+};
+if keep {
+matched.push(row);
+}
+}
+Ok(matched)
+}
+
+pub fn matching_rows_limited(db: &Database, schema: &Schema, filter: &Option<Expr>, limit: Option<(usize, usize)>) -> Result<Vec<Vec<Value>>> {
+if let Some(expr) = filter {
         check_columns(expr, schema)?;
     }
-    let mut matched = Vec::new();
-    for row in db.scan(&schema.name)? {
-        let keep = match filter {
-            Some(expr) => passes(expr, schema, &row)?,
-            None => true,
-        };
-        if keep {
-            matched.push(row);
-        }
-    }
-    Ok(matched)
+let mut matched = Vec::new();
+let mut bytes = 0usize;
+db.scan_each(&schema.name, 64, |row, size| {
+let keep = match filter {
+Some(expr) => passes(expr, schema, &row)?,
+None => true,
+};
+if keep {
+bytes += size;
+matched.push(row);
+if let Some((max_rows, max_bytes)) = limit {
+if matched.len() > max_rows || bytes > max_bytes { return Err(crate::error::Error::InvalidInput(format!("query matches more than {} rows or {} bytes, add a WHERE clause to narrow it", max_rows, max_bytes))); }
+}
+}
+Ok(true)
+})?;
+Ok(matched)
 }
 
 fn select(
@@ -120,7 +151,7 @@ fn select(
         if order_by.is_some() {
             return fail("ORDER BY is not supported with aggregates");
         }
-        let rows = matching_rows(db, &schema, &filter)?;
+let rows = matching_rows_limited(db, &schema, &filter, Some((MAX_MATERIALIZED_ROWS, MAX_MATERIALIZED_BYTES)))?;
         let mut columns = Vec::new();
         let mut values = Vec::new();
         for item in items {

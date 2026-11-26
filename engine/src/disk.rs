@@ -128,6 +128,23 @@ impl DiskStore {
         overflow::visible_range(&mut self.tree(), start, end, limit)
     }
 
+pub fn scan_prefix_each<F: FnMut(&[u8], &[u8]) -> Result<bool>>(&self, prefix: &[u8], chunk: usize, mut visit: F) -> Result<()> {
+let chunk = chunk.max(1);
+let end = prefix_end(prefix);
+let mut cursor = prefix.to_vec();
+let mut tree = self.tree();
+loop {
+let pairs = overflow::visible_range(&mut tree, Some(cursor.as_slice()), end.as_deref(), chunk)?;
+for (key, value) in &pairs {
+if !visit(key, value)? { return Ok(()); }
+}
+match pairs.last() {
+Some((key, _)) if pairs.len() == chunk => { cursor = key.clone(); cursor.push(0); }
+_ => return Ok(()),
+}
+}
+}
+
     pub fn scan_prefix(&self, prefix: &[u8], limit: usize) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
         let end = prefix_end(prefix);
         self.range(Some(prefix), end.as_deref(), limit)
