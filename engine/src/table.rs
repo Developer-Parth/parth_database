@@ -1,6 +1,7 @@
 use crate::error::{Error, Result};
 use crate::disk::DiskStore;
 use crate::store::Batch;
+use crate::txn::Kv;
 use crate::value::{decode_row, encode_key, encode_row, DecodeError, Value};
 use std::path::Path;
 
@@ -133,16 +134,16 @@ pub(crate) fn row_key(table: &str, pk: &Value) -> Result<Vec<u8>> {
 }
 
 pub struct Database {
-    store: DiskStore,
+    pub(crate) store: Kv,
 }
 
 impl Database {
     pub fn open(dir: impl AsRef<Path>) -> Result<Database> {
-        Ok(Database { store: DiskStore::open(dir)? })
+        Ok(Database { store: Kv::new(DiskStore::open(dir)?) })
     }
 
     pub fn store(&self) -> &DiskStore {
-        &self.store
+        self.store.disk()
     }
 
     pub fn tables(&self) -> Result<Vec<Schema>> {

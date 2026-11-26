@@ -86,3 +86,21 @@ Rules that are tested:
 - SUM and AVG need a numeric column. Only COUNT accepts *.
 - LIMIT 0 returns no rows, any larger LIMIT returns the one row.
 - ORDER BY is rejected with aggregates. Mixing plain columns with aggregates is rejected. GROUP BY is not supported yet.
+
+## Transactions
+
+One POST /api/sql request may carry a transaction:
+
+    BEGIN; INSERT INTO users VALUES (4, 'dev'); UPDATE users SET name = 'bee' WHERE id = 2; COMMIT;
+
+The response is {"committed": true, "results": [...]} with one result per statement. A request with a single plain statement behaves as before.
+
+Rules that are tested:
+
+- All statements run on a private overlay. Later statements see earlier uncommitted writes, deletes, table creation and table drops.
+- COMMIT writes everything in one atomic B+tree commit. ROLLBACK runs the statements, returns their results with "committed": false and writes nothing.
+- A failing statement fails the whole request and nothing is written. A transaction without COMMIT or ROLLBACK is an error and nothing is written.
+- Rejected forms: nested BEGIN, COMMIT or ROLLBACK outside a transaction, statements after COMMIT, and several statements without BEGIN.
+- Pending state lives only inside one request. Separate requests never share it.
+- The server runs one request at a time, so a transaction has no concurrent writers.
+- Limits: no savepoints, no sessions that span requests, and the whole transaction is held in memory until COMMIT.

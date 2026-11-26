@@ -12,6 +12,7 @@ pub mod parser;
 pub mod server;
 pub mod store;
 pub mod table;
+pub mod txn;
 pub mod value;
 pub mod wal;
 

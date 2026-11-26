@@ -586,3 +586,35 @@ mod tests {
         assert!(parse(&negs).is_err());
     }
 }
+pub enum ScriptItem {
+    Begin,
+    Commit,
+    Rollback,
+    Statement(Statement),
+}
+
+pub fn parse_script(sql: &str) -> Result<Vec<ScriptItem>> {
+    let mut parser = Parser { tokens: tokenize(sql)?, pos: 0, depth: 0 };
+    let mut items = Vec::new();
+    loop {
+        while parser.eat_symbol(";") {}
+        if parser.peek().is_none() {
+            break;
+        }
+        let item = if parser.eat_keyword("BEGIN") {
+            parser.eat_keyword("TRANSACTION");
+            ScriptItem::Begin
+        } else if parser.eat_keyword("COMMIT") {
+            ScriptItem::Commit
+        } else if parser.eat_keyword("ROLLBACK") {
+            ScriptItem::Rollback
+        } else {
+            ScriptItem::Statement(parser.statement()?)
+        };
+        items.push(item);
+        if parser.peek().is_some() && !parser.eat_symbol(";") {
+            return fail("unexpected input after statement");
+        }
+    }
+    Ok(items)
+}

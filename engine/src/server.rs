@@ -1,5 +1,5 @@
 use crate::error::{Error, Result};
-use crate::exec::{execute, QueryResult};
+use crate::exec::{execute, execute_script, Outcome, QueryResult};
 use crate::json::{parse, Json};
 use crate::table::{ColumnType, Database};
 use crate::value::Value;
@@ -268,8 +268,14 @@ fn run_sql(ctx: &Context, body: &[u8]) -> Response {
         return error_response(400, "body must be an object with a string field named sql");
     };
     let db = ctx.db.lock().unwrap_or_else(|p| p.into_inner());
-    match execute(&db, sql) {
-        Ok(result) => json_response(200, result_json(&result)),
+    match execute_script(&db, sql) {
+        Ok(Outcome::Single(result)) => json_response(200, result_json(&result)),
+        Ok(Outcome::Transaction { committed, results }) => {
+            let mut map = std::collections::BTreeMap::new();
+            map.insert("committed".to_string(), Json::Bool(committed));
+            map.insert("results".to_string(), Json::Array(results.iter().map(result_json).collect()));
+            json_response(200, Json::Object(map))
+        }
         Err(e) => engine_error(e),
     }
 }

@@ -351,3 +351,42 @@ fn as_real(value: &Value) -> f64 {
         _ => 0.0,
     }
 }
+use crate::parser::{parse_script, ScriptItem};
+
+pub enum Outcome {
+    Single(QueryResult),
+    Transaction { committed: bool, results: Vec<QueryResult> },
+}
+
+pub fn execute_script(db: &Database, sql: &str) -> Result<Outcome> {
+    let mut items = parse_script(sql)?;
+    if items.is_empty() {
+        return fail("empty statement");
+    }
+    if !matches!(items[0], ScriptItem::Begin) {
+        if items.len() > 1 {
+            return fail("multiple statements require BEGIN and COMMIT");
+        }
+        return match items.remove(0) {
+            ScriptItem::Statement(statement) => run(db, statement).map(Outcome::Single),
+            _ => fail("COMMIT and ROLLBACK need BEGIN first"),
+        };
+    }
+    let committed = match items.pop() {
+        Some(ScriptItem::Commit) => true,
+        Some(ScriptItem::Rollback) => false,
+        _ => return fail("transaction must end with COMMIT or ROLLBACK"),
+    };
+    items.remove(0);
+    let mut statements = Vec::new();
+    for item in items {
+        match item {
+            ScriptItem::Statement(statement) => statements.push(statement),
+            _ => return fail("nested or misplaced transaction control is not supported"),
+        }
+    }
+    let results = db.transaction(committed, |view| {
+        statements.into_iter().map(|s| run(view, s)).collect::<Result<Vec<_>>>()
+    })?;
+    Ok(Outcome::Transaction { committed, results })
+}

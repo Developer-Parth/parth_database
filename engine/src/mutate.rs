@@ -16,7 +16,7 @@ impl Database {
         for row in rows {
             let row = Self::check_row(&schema, row)?;
             let key = row_key(table, &row[schema.primary_key])?;
-            if !seen.insert(key.clone()) || self.store().contains(&key)? {
+            if !seen.insert(key.clone()) || self.store.contains(&key)? {
                 return Err(duplicate());
             }
             batch.put(key, encode_row(&row));
@@ -24,7 +24,7 @@ impl Database {
         if batch.is_empty() {
             return Ok(());
         }
-        self.store().write(batch)
+        self.store.write(batch)
     }
 
     pub fn update_many(&self, table: &str, changes: &[(Value, Vec<Value>)]) -> Result<()> {
@@ -38,7 +38,7 @@ impl Database {
         }
         let mut new_keys = HashSet::new();
         for (key, _) in &new_rows {
-            let taken = self.store().contains(key)? && !old_keys.contains(key);
+            let taken = self.store.contains(key)? && !old_keys.contains(key);
             if !new_keys.insert(key.clone()) || taken {
                 return Err(duplicate());
             }
@@ -53,7 +53,7 @@ impl Database {
         if batch.is_empty() {
             return Ok(());
         }
-        self.store().write(batch)
+        self.store.write(batch)
     }
 
     pub fn delete_many(&self, table: &str, pks: &[Value]) -> Result<()> {
@@ -65,6 +65,6 @@ impl Database {
         if batch.is_empty() {
             return Ok(());
         }
-        self.store().write(batch)
+        self.store.write(batch)
     }
 }
