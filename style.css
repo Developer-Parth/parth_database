@@ -72,3 +72,5 @@ th { position: sticky; top: 0; background: var(--panel); }
 td.null { color: var(--muted); font-style: italic; }
 .error { color: var(--bad); }
 @media (max-width: 700px) { main { grid-template-columns: 1fr; } }
+main > * { min-width: 0; }
+td { max-width: 420px; overflow: hidden; text-overflow: ellipsis; }
