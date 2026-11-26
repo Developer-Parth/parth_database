@@ -122,16 +122,44 @@
     }
   }
 
-  function runSql() {
+    function describe(data) {
+    return data.columns.length ? data.rows.length + " row(s)" : data.affected + " row(s) affected";
+  }
+
+  function showResult(data) {
+    var wrap = el("result-wrap");
+    var message = el("message");
+    message.className = "muted";
+    if (!Array.isArray(data.results)) {
+      message.textContent = describe(data);
+      renderGrid(wrap, data.columns, data.rows);
+      if (!data.columns.length) { wrap.textContent = ""; }
+      return;
+    }
+    message.textContent = (data.committed ? "Committed: " : "Rolled back: ") + data.results.length + " statement(s)";
+    message.className = data.committed ? "muted" : "error";
+    wrap.textContent = "";
+    data.results.forEach(function (result, index) {
+      var line = document.createElement("p");
+      line.textContent = "Statement " + (index + 1) + ": " + describe(result);
+      wrap.appendChild(line);
+      if (result.columns.length) {
+        var holder = document.createElement("div");
+        holder.className = "grid-wrap";
+        renderGrid(holder, result.columns, result.rows);
+        wrap.appendChild(holder);
+      }
+    });
+  }
+
+function runSql() {
     var sql = el("sql").value.trim();
     if (!sql || !state.token) { return; }
     var message = el("message");
     message.className = "muted";
     message.textContent = "Running";
     request("POST", "/api/sql", { sql: sql }).then(function (data) {
-      message.textContent = data.columns.length ? data.rows.length + " row(s)" : data.affected + " row(s) affected";
-      renderGrid(el("result-wrap"), data.columns, data.rows);
-      if (!data.columns.length) { el("result-wrap").textContent = ""; }
+      showResult(data);
       return loadTables();
     }).catch(function (err) {
       el("result-wrap").textContent = "";
