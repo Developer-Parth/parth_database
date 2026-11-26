@@ -180,7 +180,7 @@ impl Parser {
         }
         self.expect_symbol(")")?;
         if columns.iter().filter(|c| c.primary_key).count() != 1 {
-            return fail("exactly one PRIMARY KEY column is required");
+            return fail("exactly one PRIMARY KEY column is required, for example CREATE TABLE t (id INT PRIMARY KEY, name TEXT)");
         }
         Ok(Statement::CreateTable { name, columns })
     }
