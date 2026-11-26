@@ -141,7 +141,7 @@
     wrap.textContent = "";
     data.results.forEach(function (result, index) {
       var line = document.createElement("p");
-      line.textContent = "Statement " + (index + 1) + ": " + describe(result);
+      line.textContent = "Statement " + (index + 1) + ": " + describe(result) + (data.committed ? "" : " (rolled back, not saved)");
       wrap.appendChild(line);
       if (result.columns.length) {
         var holder = document.createElement("div");

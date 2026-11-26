@@ -104,3 +104,7 @@ Rules that are tested:
 - Pending state lives only inside one request. Separate requests never share it.
 - The server runs one request at a time, so a transaction has no concurrent writers.
 - Limits: no savepoints, no sessions that span requests, and the whole transaction is held in memory until COMMIT.
+
+## Transactions in the web page
+
+A script that starts with BEGIN and ends with COMMIT or ROLLBACK can be pasted into the SQL box, one statement per line or all on one line. The page shows "Committed" or "Rolled back" with the statement count, then the result of each statement in order. After a ROLLBACK every statement line is labelled "rolled back, not saved", because those rows existed only inside the discarded transaction. A failing statement rejects the whole script and nothing is saved.
