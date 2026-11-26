@@ -8,6 +8,7 @@ pub mod json;
 pub mod lexer;
 pub mod mutate;
 pub mod parser;
+pub mod server;
 pub mod store;
 pub mod table;
 pub mod value;
