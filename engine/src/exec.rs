@@ -182,7 +182,7 @@ let rows = matching_rows_limited(db, &schema, &filter, Some((MAX_MATERIALIZED_RO
         Some((name, descending)) => Some((column_position(&schema, name)?, *descending)),
         None => None,
     };
-    let mut rows = matching_rows(db, &schema, &filter)?;
+    let mut rows = if order.is_none() { matching_rows_window(db, &schema, &filter, offset, limit)? } else { matching_rows(db, &schema, &filter)? };
     if let Some((index, descending)) = order {
         rows.sort_by(|a, b| {
             let ordering = a[index].compare(&b[index]);
@@ -193,7 +193,7 @@ let rows = matching_rows_limited(db, &schema, &filter, Some((MAX_MATERIALIZED_RO
             }
         });
     }
-    rows.drain(..offset.min(rows.len()));
+    if order.is_some() { rows.drain(..offset.min(rows.len())); }
     let truncated = cap_rows(&mut rows, limit);
     let rows = rows
         .into_iter()
@@ -561,4 +561,28 @@ fn cap_rows<T>(rows: &mut Vec<T>, limit: Option<usize>) -> bool {
     let truncated = rows.len() > MAX_RESULT_ROWS && wanted > MAX_RESULT_ROWS;
     rows.truncate(wanted.min(MAX_RESULT_ROWS));
     truncated
+}
+
+fn matching_rows_window(db: &Database, schema: &Schema, filter: &Option<Expr>, offset: usize, limit: Option<usize>) -> Result<Vec<Vec<Value>>> {
+if let Some(expr) = filter {
+check_columns(expr, schema)?;
+}
+let keep = limit.unwrap_or(usize::MAX).min(MAX_RESULT_ROWS).saturating_add(1);
+let mut skipped = 0usize;
+let mut matched = Vec::new();
+db.scan_each(&schema.name, 64, |row, _| {
+let hit = match filter {
+Some(expr) => passes(expr, schema, &row)?,
+None => true,
+};
+if hit {
+if skipped < offset {
+skipped += 1;
+} else {
+matched.push(row);
+}
+}
+Ok(matched.len() < keep)
+})?;
+Ok(matched)
 }
