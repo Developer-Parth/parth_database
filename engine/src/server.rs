@@ -185,7 +185,7 @@ fn route(request: &Request, ctx: &Context) -> Response {
     let segments: Vec<&str> = path.trim_matches('/').split('/').collect();
     match (request.method.as_str(), segments.as_slice()) {
         ("GET", ["api", "tables"]) => list_tables(ctx),
-        ("GET", ["api", "tables", name, "rows"]) => table_rows(ctx, name),
+        ("GET", ["api", "tables", name, "rows"]) => table_rows(ctx, name, request.path.split('?').nth(1).unwrap_or("")),
         ("POST", ["api", "sql"]) => run_sql(ctx, &request.body),
         (_, ["api", "tables"]) | (_, ["api", "sql"]) | (_, ["api", "tables", _, "rows"]) => error_response(405, "method not allowed"),
         _ => error_response(404, "not found"),
@@ -250,13 +250,53 @@ fn list_tables(ctx: &Context) -> Response {
     }
 }
 
-fn table_rows(ctx: &Context, name: &str) -> Response {
+fn query_number(query: &str, key: &str) -> std::result::Result<Option<usize>, Response> {
+    for pair in query.split("&") {
+        let mut parts = pair.splitn(2, "=");
+        if parts.next() == Some(key) {
+            let value = parts.next().unwrap_or("");
+            return match value.parse::<usize>() {
+                Ok(n) => Ok(Some(n)),
+                Err(_) => Err(error_response(400, &format!("{key} must be a non-negative integer"))),
+            };
+        }
+    }
+    Ok(None)
+}
+
+fn table_rows(ctx: &Context, name: &str, query: &str) -> Response {
+    let limit = match query_number(query, "limit") {
+        Ok(value) => value.unwrap_or(ROW_LIMIT).min(ROW_LIMIT),
+        Err(response) => return response,
+    };
+    if limit == 0 {
+        return error_response(400, "limit must be at least 1");
+    }
+    let offset = match query_number(query, "offset") {
+        Ok(value) => value.unwrap_or(0),
+        Err(response) => return response,
+    };
     let db = ctx.db.lock().unwrap_or_else(|p| p.into_inner());
     if let Err(e) = db.schema(name) {
         return engine_error(e);
     }
-    match execute(&db, &format!("SELECT * FROM {name} LIMIT {ROW_LIMIT}")) {
-        Ok(result) => json_response(200, result_json(&result)),
+    let total = match execute(&db, &format!("SELECT COUNT(*) FROM {name}")) {
+        Ok(result) => match result.rows.first().and_then(|row| row.first()) {
+            Some(Value::Int(n)) => *n as f64,
+            _ => 0.0,
+        },
+        Err(e) => return engine_error(e),
+    };
+    match execute(&db, &format!("SELECT * FROM {name} LIMIT {limit} OFFSET {offset}")) {
+        Ok(result) => {
+            let mut body = result_json(&result);
+            if let Json::Object(map) = &mut body {
+                map.insert("total".to_string(), Json::Number(total));
+                map.insert("offset".to_string(), Json::Number(offset as f64));
+                map.insert("limit".to_string(), Json::Number(limit as f64));
+            }
+            json_response(200, body)
+        }
         Err(e) => engine_error(e),
     }
 }

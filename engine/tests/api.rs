@@ -179,3 +179,34 @@ fn transactions_commit_and_roll_back_over_http() {
     assert!(text.contains("a;b") && text.contains("kept"), "{text}");
     assert!(!text.contains("gone") && !text.contains("never") && !text.contains("dup"), "{text}");
 }
+
+#[test]
+fn rows_endpoint_pages_and_reports_total() {
+    let addr = launch("paging");
+    sql(addr, "CREATE TABLE n (id INT PRIMARY KEY)");
+    sql(addr, "INSERT INTO n VALUES (1), (2), (3), (4), (5)");
+    let get = |query: &str| send(addr, "GET", &format!("/api/tables/n/rows{query}"), Some(TOKEN), "");
+    let (status, _, body) = get("?limit=2&offset=2");
+    assert_eq!(status, 200);
+    let page = parse(&body).unwrap();
+    assert_eq!(page.get("rows"), Some(&parse("[[3],[4]]").unwrap()));
+    assert_eq!(page.get("total"), Some(&parse("5").unwrap()));
+    assert_eq!(page.get("offset"), Some(&parse("2").unwrap()));
+    assert_eq!(page.get("limit"), Some(&parse("2").unwrap()));
+    let (_, _, body) = get("?limit=2&offset=4");
+    assert_eq!(parse(&body).unwrap().get("rows"), Some(&parse("[[5]]").unwrap()));
+    let (status, _, body) = get("?offset=10");
+    let past = parse(&body).unwrap();
+    assert_eq!(status, 200);
+    assert_eq!(past.get("rows"), Some(&parse("[]").unwrap()));
+    assert_eq!(past.get("total"), Some(&parse("5").unwrap()));
+    let (_, _, body) = get("");
+    let all = parse(&body).unwrap();
+    assert_eq!(all.get("rows"), Some(&parse("[[1],[2],[3],[4],[5]]").unwrap()));
+    assert_eq!(all.get("limit"), Some(&parse("1000").unwrap()));
+    let (_, _, body) = get("?limit=999999");
+    assert_eq!(parse(&body).unwrap().get("limit"), Some(&parse("1000").unwrap()));
+    for bad in ["?limit=0", "?limit=-1", "?limit=abc", "?offset=x", "?offset=-1", "?limit=", "?offset=1.5"] {
+        assert_eq!(get(bad).0, 400, "{bad}");
+    }
+}
