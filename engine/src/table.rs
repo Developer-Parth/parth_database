@@ -1,5 +1,6 @@
 use crate::error::{Error, Result};
-use crate::store::{Batch, Options, Store};
+use crate::disk::DiskStore;
+use crate::store::Batch;
 use crate::value::{decode_row, encode_key, encode_row, DecodeError, Value};
 use std::path::Path;
 
@@ -132,28 +133,28 @@ pub(crate) fn row_key(table: &str, pk: &Value) -> Result<Vec<u8>> {
 }
 
 pub struct Database {
-    store: Store,
+    store: DiskStore,
 }
 
 impl Database {
     pub fn open(dir: impl AsRef<Path>) -> Result<Database> {
-        Ok(Database { store: Store::open(dir, Options::default())? })
+        Ok(Database { store: DiskStore::open(dir)? })
     }
 
-    pub fn store(&self) -> &Store {
+    pub fn store(&self) -> &DiskStore {
         &self.store
     }
 
     pub fn tables(&self) -> Result<Vec<Schema>> {
         self.store
-            .scan_prefix(b"c\0", usize::MAX)
+            .scan_prefix(b"c\0", usize::MAX)?
             .into_iter()
             .map(|(_, v)| Schema::decode(&v))
             .collect()
     }
 
     pub fn schema(&self, table: &str) -> Result<Schema> {
-        match self.store.get(&catalog_key(table)) {
+        match self.store.get(&catalog_key(table))? {
             Some(bytes) => Schema::decode(&bytes),
             None => Err(Error::InvalidInput(format!("no such table: {table}"))),
         }
@@ -178,7 +179,7 @@ impl Database {
             ColumnType::Int | ColumnType::Text => {}
             _ => return Err(invalid("primary key must be integer or text")),
         }
-        if self.store.contains(&catalog_key(&schema.name)) {
+        if self.store.contains(&catalog_key(&schema.name))? {
             return Err(Error::InvalidInput(format!("table exists: {}", schema.name)));
         }
         self.store.put(catalog_key(&schema.name), schema.encode())
@@ -187,7 +188,7 @@ impl Database {
     pub fn drop_table(&self, table: &str) -> Result<()> {
         self.schema(table)?;
         let mut batch = Batch::new();
-        for (key, _) in self.store.scan_prefix(&table_prefix(table), usize::MAX) {
+        for (key, _) in self.store.scan_prefix(&table_prefix(table), usize::MAX)? {
             batch.delete(key);
         }
         batch.delete(catalog_key(table));
@@ -218,7 +219,7 @@ impl Database {
         let schema = self.schema(table)?;
         let row = Self::check_row(&schema, row)?;
         let key = row_key(table, &row[schema.primary_key])?;
-        if self.store.contains(&key) {
+        if self.store.contains(&key)? {
             return Err(invalid("duplicate primary key"));
         }
         self.store.put(key, encode_row(&row))
@@ -226,7 +227,7 @@ impl Database {
 
     pub fn get(&self, table: &str, pk: &Value) -> Result<Option<Vec<Value>>> {
         self.schema(table)?;
-        match self.store.get(&row_key(table, pk)?) {
+        match self.store.get(&row_key(table, pk)?)? {
             Some(bytes) => Ok(Some(decode_row(&bytes).map_err(corrupt)?)),
             None => Ok(None),
         }
@@ -236,11 +237,11 @@ impl Database {
         let schema = self.schema(table)?;
         let row = Self::check_row(&schema, row)?;
         let old_key = row_key(table, pk)?;
-        if !self.store.contains(&old_key) {
+        if !self.store.contains(&old_key)? {
             return Ok(false);
         }
         let new_key = row_key(table, &row[schema.primary_key])?;
-        if new_key != old_key && self.store.contains(&new_key) {
+        if new_key != old_key && self.store.contains(&new_key)? {
             return Err(invalid("duplicate primary key"));
         }
         let mut batch = Batch::new();
@@ -255,7 +256,7 @@ impl Database {
     pub fn delete(&self, table: &str, pk: &Value) -> Result<bool> {
         self.schema(table)?;
         let key = row_key(table, pk)?;
-        if !self.store.contains(&key) {
+        if !self.store.contains(&key)? {
             return Ok(false);
         }
         self.store.delete(key)?;
@@ -265,7 +266,7 @@ impl Database {
     pub fn scan(&self, table: &str) -> Result<Vec<Vec<Value>>> {
         self.schema(table)?;
         self.store
-            .scan_prefix(&table_prefix(table), usize::MAX)
+            .scan_prefix(&table_prefix(table), usize::MAX)?
             .into_iter()
             .map(|(_, v)| decode_row(&v).map_err(corrupt))
             .collect()
