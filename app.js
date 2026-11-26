@@ -162,9 +162,42 @@ function showResult(data) {
     });
   }
 
+var queryHistory = [];
+
+function getStorage() {
+  try {
+    return window.localStorage;
+  } catch (err) {
+    return null;
+  }
+}
+
+function renderHistory() {
+  var select = el("history");
+  select.textContent = "";
+  var first = document.createElement("option");
+  first.value = "";
+  first.textContent = queryHistory.length ? "History (" + queryHistory.length + ")" : "History empty";
+  select.appendChild(first);
+  queryHistory.forEach(function (sql, index) {
+    var option = document.createElement("option");
+    var flat = sql.replace(/\s+/g, " ");
+    option.value = String(index);
+    option.textContent = flat.length > 60 ? flat.slice(0, 57) + "..." : flat;
+    select.appendChild(option);
+  });
+}
+
+function rememberQuery(sql) {
+  queryHistory = pushHistory(queryHistory, sql);
+  saveHistory(getStorage(), queryHistory);
+  renderHistory();
+}
+
 function runSql() {
     var sql = el("sql").value.trim();
     if (!sql || !state.token) { return; }
+    rememberQuery(sql);
     var message = el("message");
     message.className = "muted";
     message.textContent = "Running";
@@ -196,6 +229,21 @@ function runSql() {
   });
 
   el("run").addEventListener("click", runSql);
+  el("history").addEventListener("change", function () {
+    var index = el("history").value;
+    if (index !== "") {
+      el("sql").value = queryHistory[Number(index)];
+      el("sql").focus();
+    }
+    el("history").value = "";
+  });
+  el("clear-history").addEventListener("click", function () {
+    queryHistory = [];
+    saveHistory(getStorage(), queryHistory);
+    renderHistory();
+  });
+  queryHistory = loadHistory(getStorage());
+  renderHistory();
   el("sql").addEventListener("keydown", function (event) {
     if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
