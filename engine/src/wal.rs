@@ -1,9 +1,3 @@
-//! Append-only write-ahead log.
-//!
-//! Each record is framed as `[len: u32 LE][crc32(payload): u32 LE][payload]`.
-//! On open, records are read until the first incomplete or corrupt frame.
-//! Everything from that point on is treated as a torn write and truncated, so
-//! a crash in the middle of an append never leaves the log unreadable.
 
 use crate::crc::crc32;
 use crate::error::Result;
@@ -12,7 +6,6 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
 const HEADER: usize = 8;
-/// Upper bound for a single record; larger lengths are treated as corruption.
 pub const MAX_RECORD: usize = 256 * 1024 * 1024;
 
 pub struct Wal {
@@ -22,7 +15,6 @@ pub struct Wal {
 
 pub struct Recovered {
     pub records: Vec<Vec<u8>>,
-    /// Bytes discarded from the tail because they were torn or corrupt.
     pub discarded_bytes: u64,
 }
 
@@ -57,15 +49,12 @@ impl Wal {
         Ok((Wal { file, len: pos as u64 }, Recovered { records, discarded_bytes: discarded }))
     }
 
-    /// Append one record. When `sync` is true the data is on stable storage
-    /// before this returns.
     pub fn append(&mut self, payload: &[u8], sync: bool) -> Result<()> {
         let mut frame = Vec::with_capacity(HEADER + payload.len());
         frame.extend_from_slice(&(payload.len() as u32).to_le_bytes());
         frame.extend_from_slice(&crc32(payload).to_le_bytes());
         frame.extend_from_slice(payload);
         if let Err(e) = self.file.write_all(&frame) {
-            // Roll back a partial write so later appends stay well framed.
             let _ = self.file.set_len(self.len);
             let _ = self.file.seek(SeekFrom::Start(self.len));
             return Err(e.into());
@@ -90,7 +79,6 @@ impl Wal {
         self.len == 0
     }
 
-    /// Drop all records (used after a snapshot has been made durable).
     pub fn reset(&mut self) -> Result<()> {
         self.file.set_len(0)?;
         self.file.seek(SeekFrom::Start(0))?;
@@ -141,7 +129,6 @@ mod tests {
             let (mut w, r) = Wal::open(&p).unwrap();
             let expected = if cut >= full.len() { 2 } else if cut >= first_end { 1 } else { 0 };
             assert_eq!(r.records.len(), expected, "cut at {cut}");
-            // The log must accept new writes after recovery.
             w.append(b"after", true).unwrap();
             drop(w);
             let (_, r2) = Wal::open(&p).unwrap();
@@ -161,7 +148,7 @@ mod tests {
         }
         let mut data = std::fs::read(&p).unwrap();
         let n = data.len();
-        data[n - 1] ^= 0xFF; // flip a byte in the second payload
+        data[n - 1] ^= 0xFF;
         std::fs::write(&p, &data).unwrap();
         let (_, r) = Wal::open(&p).unwrap();
         assert_eq!(r.records, vec![b"aaaa".to_vec()]);

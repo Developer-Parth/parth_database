@@ -1,14 +1,3 @@
-//! Ordered key-value store: in-memory index backed by a WAL plus snapshots.
-//!
-//! Durability model:
-//! - Every write batch is one WAL record. With `SyncMode::Always` it is fsynced
-//!   before the call returns, so an acknowledged write survives a crash.
-//! - A batch is atomic: after a crash either all of its operations are visible
-//!   or none are.
-//! - `checkpoint` writes a full snapshot to a temp file, fsyncs it, renames it
-//!   over the old snapshot, then resets the WAL. A crash at any step recovers
-//!   to a consistent state (snapshot sequence numbers let replay skip records
-//!   already contained in the snapshot).
 
 use crate::crc::crc32;
 use crate::error::{Error, Result};
@@ -26,16 +15,13 @@ pub const MAX_VALUE: usize = 64 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SyncMode {
-    /// fsync after every batch. Safe against power loss.
     Always,
-    /// Leave flushing to the OS. Safe against process crashes only.
     Never,
 }
 
 #[derive(Clone, Debug)]
 pub struct Options {
     pub sync: SyncMode,
-    /// Automatically checkpoint when the WAL grows past this many bytes (0 disables).
     pub checkpoint_bytes: u64,
 }
 
@@ -103,7 +89,6 @@ struct Inner {
     _lock: File,
 }
 
-/// Handle to an open database. Cheap to clone; all clones share state.
 #[derive(Clone)]
 pub struct Store {
     inner: Arc<Inner>,
@@ -231,7 +216,6 @@ fn sync_dir(dir: &Path) -> Result<()> {
 
 #[cfg(not(unix))]
 fn sync_dir(_dir: &Path) -> Result<()> {
-    // Windows cannot fsync a directory handle through std; NTFS renames are journaled.
     Ok(())
 }
 
@@ -308,7 +292,6 @@ impl Store {
         self.write(b)
     }
 
-    /// Apply a batch atomically and durably (per `SyncMode`).
     pub fn write(&self, batch: Batch) -> Result<()> {
         if batch.is_empty() {
             return Ok(());
@@ -335,7 +318,6 @@ impl Store {
             let mut st = self.inner.state.write().unwrap();
             let next = st.seq + 1;
             let payload = encode_batch(next, batch.ops());
-            // Log first; only mutate memory once the record is in the log.
             st.wal.append(&payload, self.inner.opts.sync == SyncMode::Always)?;
             st.seq = next;
             apply(&mut st.map, batch.ops);
@@ -348,7 +330,6 @@ impl Store {
         Ok(())
     }
 
-    /// Ordered scan of `[start, end)`; `None` bounds are open. Returns at most `limit` pairs.
     pub fn range(&self, start: Option<&[u8]>, end: Option<&[u8]>, limit: usize) -> Vec<(Vec<u8>, Vec<u8>)> {
         let st = self.inner.state.read().unwrap();
         let lo = match start {
@@ -367,7 +348,6 @@ impl Store {
         st.map.range((lo, hi)).take(limit).map(|(k, v)| (k.clone(), v.clone())).collect()
     }
 
-    /// All entries whose key starts with `prefix`, in key order.
     pub fn scan_prefix(&self, prefix: &[u8], limit: usize) -> Vec<(Vec<u8>, Vec<u8>)> {
         let end = prefix_end(prefix);
         self.range(Some(prefix), end.as_deref(), limit)
@@ -392,12 +372,10 @@ impl Store {
         }
     }
 
-    /// Flush the WAL to stable storage (useful with `SyncMode::Never`).
     pub fn sync(&self) -> Result<()> {
         self.inner.state.write().unwrap().wal.sync()
     }
 
-    /// Write a snapshot of the current state and empty the WAL.
     pub fn checkpoint(&self) -> Result<()> {
         let mut st = self.inner.state.write().unwrap();
         let mut body = Vec::new();
@@ -427,7 +405,6 @@ impl Store {
     }
 }
 
-/// Smallest key greater than every key with the given prefix, if one exists.
 fn prefix_end(prefix: &[u8]) -> Option<Vec<u8>> {
     let mut end = prefix.to_vec();
     while let Some(last) = end.pop() {

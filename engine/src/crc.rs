@@ -1,4 +1,3 @@
-//! CRC-32 (IEEE 802.3, reflected, polynomial 0xEDB88320).
 
 const fn make_table() -> [u32; 256] {
     let mut table = [0u32; 256];

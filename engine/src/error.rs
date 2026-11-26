@@ -4,9 +4,7 @@ use std::io;
 #[derive(Debug)]
 pub enum Error {
     Io(io::Error),
-    /// Data on disk failed validation in a place where recovery cannot repair it.
     Corrupt(String),
-    /// Another process or handle already has this database open.
     Locked,
     InvalidInput(String),
 }

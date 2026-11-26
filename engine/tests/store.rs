@@ -41,9 +41,7 @@ fn batch_is_atomic_when_log_is_cut_mid_record() {
     }
     let wal = d.join("wal.log");
     let full = fs::read(&wal).unwrap();
-    // Cut the log at every byte inside the second record: the batch must be
-    // either fully absent or (only when intact) fully present.
-    let first_len = 8 + (8 + 4 + 1 + (4 + 4) + (4 + 1)); // header + seq,count,tag,klen+base,vlen+x
+    let first_len = 8 + (8 + 4 + 1 + (4 + 4) + (4 + 1));
     for cut in (first_len + 1)..full.len() {
         fs::write(&wal, &full[..cut]).unwrap();
         let s = Store::open(&d, opts()).unwrap();
@@ -92,7 +90,6 @@ fn crash_between_snapshot_rename_and_wal_reset_is_safe() {
         saved_wal = fs::read(d.join("wal.log")).unwrap();
         s.checkpoint().unwrap();
     }
-    // Simulate a crash after the snapshot was renamed but before the WAL was emptied.
     fs::write(d.join("wal.log"), &saved_wal).unwrap();
     let s = Store::open(&d, opts()).unwrap();
     assert_eq!(s.len(), 2);
