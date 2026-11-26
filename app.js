@@ -126,13 +126,22 @@
     return data.columns.length ? data.rows.length + " row(s)" : data.affected + " row(s) affected";
   }
 
-  function showResult(data) {
+  function addExport(target, columns, rows) {
+  var button = document.createElement("button");
+  button.type = "button";
+  button.textContent = "Download CSV";
+  button.addEventListener("click", function () { downloadCsv(columns, rows); });
+  target.appendChild(button);
+}
+
+function showResult(data) {
     var wrap = el("result-wrap");
     var message = el("message");
     message.className = "muted";
     if (!Array.isArray(data.results)) {
       message.textContent = describe(data);
       renderGrid(wrap, data.columns, data.rows);
+      addExport(wrap, data.columns, data.rows);
       if (!data.columns.length) { wrap.textContent = ""; }
       return;
     }
@@ -148,6 +157,7 @@
         holder.className = "grid-wrap";
         renderGrid(holder, result.columns, result.rows);
         wrap.appendChild(holder);
+      if (data.committed !== false) { addExport(wrap, result.columns, result.rows); }
       }
     });
   }

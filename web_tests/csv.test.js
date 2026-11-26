@@ -1,0 +1,21 @@
+const assert = require("assert");
+const { csvField, toCsv } = require("../csv.js");
+
+assert.strictEqual(csvField(null), "");
+assert.strictEqual(csvField(undefined), "");
+assert.strictEqual(csvField(-5), "-5");
+assert.strictEqual(csvField(3.5), "3.5");
+assert.strictEqual(csvField(true), "true");
+assert.strictEqual(csvField("plain"), "plain");
+assert.strictEqual(csvField("a,b"), "\"a,b\"");
+assert.strictEqual(csvField("say \"hi\""), "\"say \"\"hi\"\"\"");
+assert.strictEqual(csvField("l1\nl2"), "\"l1\nl2\"");
+assert.strictEqual(csvField("=1+1"), "\u0027=1+1");
+assert.strictEqual(csvField("+1"), "\u0027+1");
+assert.strictEqual(csvField("-2"), "\u0027-2");
+assert.strictEqual(csvField("@SUM(A1)"), "\u0027@SUM(A1)");
+assert.strictEqual(csvField("\tx"), "\u0027\tx");
+assert.strictEqual(csvField("=A,B"), "\"\u0027=A,B\"");
+assert.strictEqual(csvField("caf\u00e9 \u4e2d"), "caf\u00e9 \u4e2d");
+assert.strictEqual(toCsv(["id", "=n"], [[1, null], [2, "x,y"]]), "id,\u0027=n\r\n1,\r\n2,\"x,y\"\r\n");
+console.log("csv tests passed");
