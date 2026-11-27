@@ -129,3 +129,17 @@ assert!(r.truncated);
 assert_eq!(r.rows, full.rows);
 }
 }
+
+#[test]
+fn unlimited_order_by_keeps_the_largest_window() {
+let db = big_table("unlimited_order");
+let r = q(&db, "SELECT id FROM t ORDER BY id DESC");
+assert_eq!(r.rows.len(), MAX_RESULT_ROWS);
+assert_eq!(r.rows[0][0], Value::Int(TOTAL as i64));
+assert_eq!(r.rows[MAX_RESULT_ROWS - 1][0], Value::Int((TOTAL - MAX_RESULT_ROWS + 1) as i64));
+assert!(r.truncated);
+let skipped = q(&db, "SELECT id FROM t ORDER BY id DESC OFFSET 10");
+assert_eq!(skipped.rows.len(), MAX_RESULT_ROWS);
+assert_eq!(skipped.rows[0][0], Value::Int((TOTAL - 10) as i64));
+assert!(skipped.truncated);
+}
