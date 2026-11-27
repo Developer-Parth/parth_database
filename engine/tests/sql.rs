@@ -109,10 +109,13 @@ fn multi_row_statements_are_atomic() {
 fn update_failing_midway_changes_no_rows() {
     let (db, dir) = seeded("midway");
     let sql = "SELECT id FROM users WHERE age = 30";
+    let all = "SELECT id, name, age, score FROM users ORDER BY id";
+    let rows = format!("{:?}", q(&db, all).rows);
     let before = ints(&q(&db, sql), 0);
     assert_eq!(before, vec![1, 4]);
     assert!(execute(&db, "UPDATE users SET age = 10 / (id - 3)").is_err());
     assert_eq!(ints(&q(&db, sql), 0), before);
+    assert_eq!(format!("{:?}", q(&db, all).rows), rows);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
