@@ -112,3 +112,27 @@ fn transaction_scan_stops_when_the_visitor_says_so() {
     .unwrap();
     assert_eq!(counts, vec![1, 3, 39, 40, 40]);
 }
+#[test]
+fn transaction_scan_propagates_visitor_errors() {
+    let db = seeded("visitor_error");
+    let results = db.transaction(true, |tx| {
+        execute(tx, "INSERT INTO t VALUES (0, 'first')")?;
+        execute(tx, "INSERT INTO t VALUES (100, 'last')")?;
+        execute(tx, "DELETE FROM t WHERE id = 5")?;
+        let mut out = Vec::new();
+        for fail_at in [1usize, 3, 40] {
+            let mut seen = 0usize;
+            let result = tx.scan_each("t", 4, |_, _| {
+                seen += 1;
+                if seen == fail_at {
+                    return Err(parth_db::Error::InvalidInput("visitor failed".into()));
+                }
+                Ok(true)
+            });
+            out.push((seen, result.is_err()));
+        }
+        Ok(out)
+    })
+    .unwrap();
+    assert_eq!(results, vec![(1, true), (3, true), (40, true)]);
+}
