@@ -182,7 +182,12 @@ let rows = matching_rows_limited(db, &schema, &filter, Some((MAX_MATERIALIZED_RO
         Some((name, descending)) => Some((column_position(&schema, name)?, *descending)),
         None => None,
     };
-    let mut rows = if order.is_none() { matching_rows_window(db, &schema, &filter, offset, limit)? } else { matching_rows(db, &schema, &filter)? };
+let top_keep = limit.map(|l| offset.saturating_add(l.min(MAX_RESULT_ROWS)).saturating_add(1)).filter(|k| *k <= MAX_RESULT_ROWS + 1);
+let mut rows = match (order, top_keep) {
+(None, _) => matching_rows_window(db, &schema, &filter, offset, limit)?,
+(Some((index, descending)), Some(keep)) => matching_rows_top(db, &schema, &filter, index, descending, keep)?,
+_ => matching_rows(db, &schema, &filter)?,
+};
     if let Some((index, descending)) = order {
         rows.sort_by(|a, b| {
             let ordering = a[index].compare(&b[index]);
@@ -585,4 +590,38 @@ matched.push(row);
 Ok(matched.len() < keep)
 })?;
 Ok(matched)
+}
+
+fn matching_rows_top(db: &Database, schema: &Schema, filter: &Option<Expr>, index: usize, descending: bool, keep: usize) -> Result<Vec<Vec<Value>>> {
+if let Some(expr) = filter {
+check_columns(expr, schema)?;
+}
+let trim_at = keep.saturating_mul(2).max(64);
+let mut seq = 0usize;
+let mut buffer: Vec<(usize, Vec<Value>)> = Vec::new();
+db.scan_each(&schema.name, 64, |row, _| {
+let hit = match filter {
+Some(expr) => passes(expr, schema, &row)?,
+None => true,
+};
+if hit {
+buffer.push((seq, row));
+seq += 1;
+if buffer.len() >= trim_at {
+trim_top(&mut buffer, index, descending, keep);
+}
+}
+Ok(true)
+})?;
+trim_top(&mut buffer, index, descending, keep);
+Ok(buffer.into_iter().map(|(_, row)| row).collect())
+}
+
+fn trim_top(buffer: &mut Vec<(usize, Vec<Value>)>, index: usize, descending: bool, keep: usize) {
+buffer.sort_by(|a, b| {
+let ordering = a.1[index].compare(&b.1[index]);
+let ordering = if descending { ordering.reverse() } else { ordering };
+ordering.then(a.0.cmp(&b.0))
+});
+buffer.truncate(keep);
 }

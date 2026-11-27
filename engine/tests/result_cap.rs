@@ -106,3 +106,26 @@ fn aggregate_sees_every_row_and_is_not_flagged() {
     assert_eq!(r.rows[0][0], Value::Int(TOTAL as i64));
     assert!(!r.truncated);
 }
+
+#[test]
+fn ordered_limit_at_cap_is_not_flagged() {
+let db = big_table("ord_at_cap");
+let r = q(&db, "SELECT id FROM t ORDER BY id DESC LIMIT 10000");
+assert_eq!(r.rows.len(), MAX_RESULT_ROWS);
+assert!(!r.truncated);
+assert_eq!(r.rows[0][0], Value::Int(TOTAL as i64));
+}
+
+#[test]
+fn ordered_limit_over_cap_is_flagged_and_matches_full_sort() {
+let db = big_table("ord_over_cap");
+let full = q(&db, "SELECT id FROM t ORDER BY id DESC");
+assert_eq!(full.rows.len(), MAX_RESULT_ROWS);
+assert!(full.truncated);
+for limit in [10001, 20000] {
+let r = q(&db, &format!("SELECT id FROM t ORDER BY id DESC LIMIT {limit}"));
+assert_eq!(r.rows.len(), MAX_RESULT_ROWS);
+assert!(r.truncated);
+assert_eq!(r.rows, full.rows);
+}
+}
