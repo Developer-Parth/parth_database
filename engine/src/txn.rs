@@ -109,17 +109,18 @@ impl Kv {
     }
 
     pub fn scan_prefix(&self, prefix: &[u8], limit: usize) -> Result<Pairs> {
-        let Some(pending) = self.pending() else {
+        if self.pending().is_none() {
             return self.disk.scan_prefix(prefix, limit);
-        };
-        let mut merged: BTreeMap<Vec<u8>, Vec<u8>> = self.disk.scan_prefix(prefix, usize::MAX)?.into_iter().collect();
-        for (key, value) in pending.iter().filter(|(k, _)| k.starts_with(prefix)) {
-            match value {
-                Some(v) => merged.insert(key.clone(), v.clone()),
-                None => merged.remove(key),
-            };
         }
-        Ok(merged.into_iter().take(limit).collect())
+        let mut out = Vec::new();
+        if limit == 0 {
+            return Ok(out);
+        }
+        self.scan_prefix_each(prefix, 64, |key, value| {
+            out.push((key.to_vec(), value.to_vec()));
+            Ok(out.len() < limit)
+        })?;
+        Ok(out)
     }
 
 pub fn scan_prefix_each<F: FnMut(&[u8], &[u8]) -> Result<bool>>(&self, prefix: &[u8], chunk: usize, mut visit: F) -> Result<()> {
