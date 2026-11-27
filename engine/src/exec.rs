@@ -182,7 +182,7 @@ let rows = matching_rows_limited(db, &schema, &filter, Some((MAX_MATERIALIZED_RO
         Some((name, descending)) => Some((column_position(&schema, name)?, *descending)),
         None => None,
     };
-let top_keep = limit.or(Some(MAX_RESULT_ROWS)).map(|l| offset.saturating_add(l.min(MAX_RESULT_ROWS)).saturating_add(1)).filter(|k| *k <= MAX_RESULT_ROWS + 1);
+let top_keep = limit.or(Some(MAX_RESULT_ROWS)).map(|l| offset.saturating_add(l.min(MAX_RESULT_ROWS)).saturating_add(1)).filter(|k| *k <= 2 * MAX_RESULT_ROWS + 1);
 let mut rows = match (order, top_keep) {
 (None, _) => matching_rows_window(db, &schema, &filter, offset, limit)?,
 (Some((index, descending)), Some(keep)) => matching_rows_top(db, &schema, &filter, index, descending, keep)?,

@@ -143,3 +143,21 @@ assert_eq!(skipped.rows.len(), MAX_RESULT_ROWS);
 assert_eq!(skipped.rows[0][0], Value::Int((TOTAL - 10) as i64));
 assert!(skipped.truncated);
 }
+
+#[test]
+fn unlimited_order_by_offset_uses_the_window_up_to_the_bound() {
+let db = big_table("offset_window");
+let near = q(&db, "SELECT id FROM t ORDER BY id DESC OFFSET 10000");
+assert_eq!(near.rows.len(), TOTAL - 10000);
+assert_eq!(near.rows[0][0], Value::Int((TOTAL - 10000) as i64));
+assert_eq!(near.rows[near.rows.len() - 1][0], Value::Int(1));
+assert!(!near.truncated);
+let past = q(&db, "SELECT id FROM t ORDER BY id DESC OFFSET 10005");
+assert_eq!(past.rows.len(), TOTAL - 10005);
+assert_eq!(past.rows[0][0], Value::Int((TOTAL - 10005) as i64));
+assert!(!past.truncated);
+let mid = q(&db, "SELECT id FROM t ORDER BY id ASC OFFSET 40");
+assert_eq!(mid.rows.len(), MAX_RESULT_ROWS);
+assert_eq!(mid.rows[0][0], Value::Int(41));
+assert!(mid.truncated);
+}
