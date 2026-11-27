@@ -261,6 +261,7 @@ function runSql() {
     state.token = el("token").value;
     state.table = "";
     el("result-wrap").textContent = "";
+    el("message").textContent = "";
     setStatus("Connecting", "off");
     fetch(state.base + "/api/health").then(function (response) {
       if (!response.ok) { throw new Error("health check failed"); }
