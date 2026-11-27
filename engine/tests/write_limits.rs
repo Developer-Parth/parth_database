@@ -50,3 +50,18 @@ let before = all_rows(&db);
 assert!(update_limited(&db, "t", null_sets(), None, (4, usize::MAX)).is_err());
 assert_eq!(all_rows(&db), before);
 }
+
+#[test]
+fn delete_above_byte_limit_errors_and_keeps_rows() {
+let db = fresh("d3", 5);
+assert!(delete_limited(&db, "t", None, (usize::MAX, 1)).is_err());
+assert_eq!(all_rows(&db).len(), 5);
+}
+
+#[test]
+fn update_above_byte_limit_errors_and_keeps_rows() {
+let db = fresh("u3", 5);
+let before = all_rows(&db);
+assert!(update_limited(&db, "t", null_sets(), None, (usize::MAX, 1)).is_err());
+assert_eq!(all_rows(&db), before);
+}
