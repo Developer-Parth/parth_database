@@ -289,7 +289,7 @@ fn grouped_select(
         }
         None => None,
     };
-    let mut rows = matching_rows(db, schema, &filter)?;
+    let mut rows = matching_rows_limited(db, schema, &filter, Some((MAX_MATERIALIZED_ROWS, MAX_MATERIALIZED_BYTES)))?;
     rows.sort_by(|a, b| compare_keys(&keys, a, b));
     let mut output: Vec<Vec<crate::value::Value>> = Vec::new();
     let mut start = 0;
@@ -333,7 +333,8 @@ fn grouped_select(
     Ok(QueryResult { columns, rows: output, affected: 0, truncated })
 }
 
-fn update(db: &Database, table: &str, sets: Vec<(String, Expr)>, filter: Option<Expr>) -> Result<QueryResult> {
+fn update(db: &Database, table: &str, sets: Vec<(String, Expr)>, filter: Option<Expr>) -> Result<QueryResult> { update_limited(db, table, sets, filter, (MAX_MATERIALIZED_ROWS, MAX_MATERIALIZED_BYTES)) }
+pub fn update_limited(db: &Database, table: &str, sets: Vec<(String, Expr)>, filter: Option<Expr>, limit: (usize, usize)) -> Result<QueryResult> {
     let schema = db.schema(table)?;
     let mut assignments = Vec::new();
     for (name, expr) in &sets {
@@ -345,7 +346,7 @@ fn update(db: &Database, table: &str, sets: Vec<(String, Expr)>, filter: Option<
         assignments.push((index, expr));
     }
     let mut changes = Vec::new();
-    for row in matching_rows(db, &schema, &filter)? {
+    for row in matching_rows_limited(db, &schema, &filter, Some(limit))? {
         let mut new_row = row.clone();
         for (index, expr) in &assignments {
             new_row[*index] = eval(expr, Some((&schema, &row)))?;
@@ -356,9 +357,10 @@ fn update(db: &Database, table: &str, sets: Vec<(String, Expr)>, filter: Option<
     Ok(QueryResult::affected(changes.len()))
 }
 
-fn delete(db: &Database, table: &str, filter: Option<Expr>) -> Result<QueryResult> {
+fn delete(db: &Database, table: &str, filter: Option<Expr>) -> Result<QueryResult> { delete_limited(db, table, filter, (MAX_MATERIALIZED_ROWS, MAX_MATERIALIZED_BYTES)) }
+pub fn delete_limited(db: &Database, table: &str, filter: Option<Expr>, limit: (usize, usize)) -> Result<QueryResult> {
     let schema = db.schema(table)?;
-    let keys: Vec<Value> = matching_rows(db, &schema, &filter)?
+    let keys: Vec<Value> = matching_rows_limited(db, &schema, &filter, Some(limit))?
         .into_iter()
         .map(|row| row[schema.primary_key].clone())
         .collect();
