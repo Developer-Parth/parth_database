@@ -33,3 +33,22 @@ fn finite_limit_scan_matches_unlimited_merge_prefix() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn finite_limit_scan_skips_deleted_rows_and_reads_pending_inserts() {
+    let dir = temp_dir("deleted");
+    let kv = Kv::new(DiskStore::open(&dir).unwrap());
+    for id in 1..4 {
+        kv.put(format!("p/{}", id), "disk").unwrap();
+    }
+    let view = kv.view();
+    for id in 1..4 {
+        view.delete(format!("p/{}", id)).unwrap();
+    }
+    view.put("p/9", "new").unwrap();
+    assert!(view.scan_prefix(b"p/", 0).unwrap().is_empty());
+    for limit in [1usize, 2, 50] {
+        assert_eq!(keys(&view.scan_prefix(b"p/", limit).unwrap()), vec!["p/9"]);
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
