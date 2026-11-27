@@ -40,7 +40,7 @@ pub fn run(db: &Database, statement: Statement) -> Result<QueryResult> {
         }
         Statement::Insert { table, columns, rows } => insert(db, &table, columns, rows),
         Statement::Select { table, projection, filter, group_by, order_by, limit, offset } => {
-            select(db, &table, projection, filter, group_by, order_by, limit, offset)
+            select(db, &table, projection, filter, group_by, order_by, limit, offset, (MAX_MATERIALIZED_ROWS, MAX_MATERIALIZED_BYTES))
         }
         Statement::Update { table, sets, filter } => update(db, &table, sets, filter),
         Statement::Delete { table, filter } => delete(db, &table, filter),
@@ -133,7 +133,7 @@ Ok(true)
 Ok(matched)
 }
 
-fn select(
+pub fn select(
     db: &Database,
     table: &str,
     projection: Projection,
@@ -142,16 +142,17 @@ fn select(
     order_by: Option<(String, bool)>,
     limit: Option<usize>,
     offset: usize,
+    materialize: (usize, usize),
 ) -> Result<QueryResult> {
     let schema = db.schema(table)?;
     if !group_by.is_empty() || matches!(projection, Projection::Items(_)) {
-        return grouped_select(db, &schema, &projection, filter, &group_by, order_by, limit, offset);
+        return grouped_select(db, &schema, &projection, filter, &group_by, order_by, limit, offset, materialize);
     }
     if let Projection::Aggregates(items) = &projection {
         if order_by.is_some() {
             return fail("ORDER BY is not supported with aggregates");
         }
-let rows = matching_rows_limited(db, &schema, &filter, Some((MAX_MATERIALIZED_ROWS, MAX_MATERIALIZED_BYTES)))?;
+let rows = matching_rows_limited(db, &schema, &filter, Some(materialize))?;
         let mut columns = Vec::new();
         let mut values = Vec::new();
         for item in items {
@@ -226,6 +227,7 @@ fn grouped_select(
     order_by: Option<(String, bool)>,
     limit: Option<usize>,
     offset: usize,
+    materialize: (usize, usize),
 ) -> Result<QueryResult> {
     let items: Vec<crate::aggregate::SelectItem> = match projection {
         Projection::All => return fail("SELECT * is not supported with GROUP BY"),
@@ -289,7 +291,7 @@ fn grouped_select(
         }
         None => None,
     };
-    let mut rows = matching_rows_limited(db, schema, &filter, Some((MAX_MATERIALIZED_ROWS, MAX_MATERIALIZED_BYTES)))?;
+    let mut rows = matching_rows_limited(db, schema, &filter, Some(materialize))?;
     rows.sort_by(|a, b| compare_keys(&keys, a, b));
     let mut output: Vec<Vec<crate::value::Value>> = Vec::new();
     let mut start = 0;
