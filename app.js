@@ -144,7 +144,7 @@ var sqlLatest = createLatest();
       });
       if (state.table) {
         var again = data.tables.filter(function (t) { return t.name === state.table; })[0];
-        if (again) { loadRows(again.name, again.columns, state.page); }
+        if (again) { loadRows(again.name, again.columns, state.page); } else { state.table = ""; el("view-title").textContent = "Rows"; el("schema").textContent = ""; el("rows-wrap").textContent = ""; el("pager").textContent = ""; }
       }
     });
   }
@@ -250,6 +250,7 @@ function runSql() {
     }, function (err) {
       el("result-wrap").textContent = "";
       showError(err);
+      loadTables().catch(function () {});
     });
   }
 
