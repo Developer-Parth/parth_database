@@ -187,7 +187,7 @@ let top_keep = limit.or(Some(MAX_RESULT_ROWS)).map(|l| offset.saturating_add(l.m
 let mut rows = match (order, top_keep) {
 (None, _) => matching_rows_window(db, &schema, &filter, offset, limit)?,
 (Some((index, descending)), Some(keep)) => matching_rows_top(db, &schema, &filter, index, descending, keep)?,
-_ => matching_rows(db, &schema, &filter)?,
+_ => matching_rows_limited(db, &schema, &filter, Some(materialize))?,
 };
     if let Some((index, descending)) = order {
         rows.sort_by(|a, b| {
