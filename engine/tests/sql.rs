@@ -106,6 +106,17 @@ fn multi_row_statements_are_atomic() {
 }
 
 #[test]
+fn update_failing_midway_changes_no_rows() {
+    let (db, dir) = seeded("midway");
+    let sql = "SELECT id FROM users WHERE age = 30";
+    let before = ints(&q(&db, sql), 0);
+    assert_eq!(before, vec![1, 4]);
+    assert!(execute(&db, "UPDATE users SET age = 10 / (id - 3)").is_err());
+    assert_eq!(ints(&q(&db, sql), 0), before);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn errors_are_reported_not_panicked() {
     let (db, dir) = seeded("errors");
     let bad = [
