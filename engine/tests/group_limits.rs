@@ -91,3 +91,24 @@ fn transaction_scan_merges_pending_inserts_updates_and_deletes_in_order() {
     assert!(inside[0].contains("zz") && inside[0].contains("first") && inside[0].contains("last"));
     assert_eq!(execute(&db, "SELECT id FROM t").unwrap().rows.len(), 40);
 }
+#[test]
+fn transaction_scan_stops_when_the_visitor_says_so() {
+    let db = seeded("early_stop");
+    let counts = db.transaction(true, |tx| {
+        execute(tx, "INSERT INTO t VALUES (0, 'first')")?;
+        execute(tx, "INSERT INTO t VALUES (100, 'last')")?;
+        execute(tx, "DELETE FROM t WHERE id = 5")?;
+        let mut out = Vec::new();
+        for stop_at in [1usize, 3, 39, 40, 1000] {
+            let mut seen = 0usize;
+            tx.scan_each("t", 4, |_, _| {
+                seen += 1;
+                Ok(seen < stop_at)
+            })?;
+            out.push(seen);
+        }
+        Ok(out)
+    })
+    .unwrap();
+    assert_eq!(counts, vec![1, 3, 39, 40, 40]);
+}
