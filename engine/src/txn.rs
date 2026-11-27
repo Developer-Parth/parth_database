@@ -124,9 +124,50 @@ impl Kv {
 
 pub fn scan_prefix_each<F: FnMut(&[u8], &[u8]) -> Result<bool>>(&self, prefix: &[u8], chunk: usize, mut visit: F) -> Result<()> {
 if self.pending().is_some() {
-for (key, value) in self.scan_prefix(prefix, usize::MAX)? {
-if !visit(&key, &value)? { return Ok(()); }
-}
+        let overlay: Vec<(Vec<u8>, Option<Vec<u8>>)> = match self.pending() {
+            Some(pending) => pending
+                .iter()
+                .filter(|(key, _)| key.starts_with(prefix))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect(),
+            None => Vec::new(),
+        };
+        let mut next = 0;
+        let mut stopped = false;
+        self.disk.scan_prefix_each(prefix, chunk, |key, value| {
+            while next < overlay.len() && overlay[next].0.as_slice() < key {
+                let (pending_key, pending_value) = &overlay[next];
+                next += 1;
+                if let Some(v) = pending_value {
+                    if !visit(pending_key, v)? {
+                        stopped = true;
+                        return Ok(false);
+                    }
+                }
+            }
+            if next < overlay.len() && overlay[next].0.as_slice() == key {
+                let pending_value = &overlay[next].1;
+                next += 1;
+                if let Some(v) = pending_value {
+                    let go = visit(key, v)?;
+                    stopped = !go;
+                    return Ok(go);
+                }
+                return Ok(true);
+            }
+            let go = visit(key, value)?;
+            stopped = !go;
+            Ok(go)
+        })?;
+        if !stopped {
+            for (pending_key, pending_value) in &overlay[next..] {
+                if let Some(v) = pending_value {
+                    if !visit(pending_key, v)? {
+                        break;
+                    }
+                }
+            }
+        }
 return Ok(());
 }
 self.disk.scan_prefix_each(prefix, chunk, visit)

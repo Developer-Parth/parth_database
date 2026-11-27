@@ -69,3 +69,25 @@ fn order_by_beyond_top_n_rejects_inside_transaction_with_pending_write() {
     });
     assert!(rejected.unwrap());
 }
+
+#[test]
+fn transaction_scan_merges_pending_inserts_updates_and_deletes_in_order() {
+    let db = seeded("merge");
+    let queries = ["SELECT id, v FROM t", "SELECT id, v FROM t LIMIT 5 OFFSET 3", "SELECT id FROM t LIMIT 2"];
+    let inside = db.transaction(true, |tx| {
+        execute(tx, "INSERT INTO t VALUES (0, 'first')")?;
+        execute(tx, "INSERT INTO t VALUES (100, 'last')")?;
+        execute(tx, "DELETE FROM t WHERE id = 5")?;
+        execute(tx, "UPDATE t SET v = 'zz' WHERE id = 7")?;
+        let mut seen = Vec::new();
+        for q in queries {
+            seen.push(format!("{:?}", execute(tx, q)?.rows));
+        }
+        Ok(seen)
+    }).unwrap();
+    for (q, before) in queries.iter().zip(inside.iter()) {
+        assert_eq!(&format!("{:?}", execute(&db, q).unwrap().rows), before);
+    }
+    assert!(inside[0].contains("zz") && inside[0].contains("first") && inside[0].contains("last"));
+    assert_eq!(execute(&db, "SELECT id FROM t").unwrap().rows.len(), 40);
+}
