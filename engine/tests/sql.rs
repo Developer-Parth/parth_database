@@ -120,6 +120,16 @@ fn update_failing_midway_changes_no_rows() {
 }
 
 #[test]
+fn delete_failing_midway_removes_no_rows() {
+    let (db, dir) = seeded("delete_midway");
+    let all = "SELECT id, name, age, score FROM users ORDER BY id";
+    let rows = format!("{:?}", q(&db, all).rows);
+    assert!(execute(&db, "DELETE FROM users WHERE 10 / (id - 3) < 0").is_err());
+    assert_eq!(format!("{:?}", q(&db, all).rows), rows);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn errors_are_reported_not_panicked() {
     let (db, dir) = seeded("errors");
     let bad = [
