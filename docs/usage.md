@@ -69,7 +69,7 @@ Rules that are tested:
 - Rejected forms: nested BEGIN, COMMIT or ROLLBACK outside a transaction, statements after COMMIT, and several statements without BEGIN.
 - Pending state lives only inside one request. Separate requests never share it.
 - The server runs one request at a time, so a transaction has no concurrent writers.
-- Limits: no savepoints, no sessions that span requests, and the whole transaction is held in memory until COMMIT.
+- Limits: no savepoints, no sessions that span requests, and the whole transaction is held in memory until COMMIT. A transaction is rejected and rolled back when it writes more than 100,000 entries or 32 MiB of cumulative key and value bytes. This bounds pending writes and is not a heap cap.
 
 ## Transactions in the web page
 

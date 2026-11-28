@@ -1,0 +1,6 @@
+use parth_db::exec::{bounded_rows, execute};
+use parth_db::value::Value;
+use parth_db::Database;
+
+#[test]
+fn oversized_transaction_is_rejected_and_rolled_back() { let dir = std::env::temp_dir().join(format!("parth_overlay_{}", std::process::id())); let _ = std::fs::remove_dir_all(&dir); let db = Database::open(&dir).unwrap(); execute(&db, "CREATE TABLE t (id INT PRIMARY KEY, v TEXT)").unwrap(); for i in 1..=200 { execute(&db, &format!("INSERT INTO t VALUES ({}, 'x{}')", i, i)).unwrap(); } let sql = format!("UPDATE t SET v = '{}'", "y".repeat(60000)); let result = db.transaction(true, |tx| { for _ in 0..20 { execute(tx, &sql)?; } Ok(()) }); assert!(result.is_err()); let rows = bounded_rows(&db, "t", usize::MAX, usize::MAX).unwrap(); assert_eq!(rows.len(), 200); assert_eq!(rows[0][1], Value::Text("x1".to_string())); let _ = std::fs::remove_dir_all(&dir); }

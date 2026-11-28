@@ -1,5 +1,5 @@
 use crate::disk::DiskStore;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::store::{Batch, Op};
 use crate::table::Database;
 use std::collections::BTreeMap;
@@ -8,14 +8,17 @@ use std::sync::{Mutex, MutexGuard};
 type Overlay = BTreeMap<Vec<u8>, Option<Vec<u8>>>;
 type Pairs = Vec<(Vec<u8>, Vec<u8>)>;
 
+const MAX_PENDING_ENTRIES: usize = 100_000;const MAX_PENDING_BYTES: usize = 32 * 1024 * 1024;
+
 pub struct Kv {
     disk: DiskStore,
     overlay: Option<Mutex<Overlay>>,
+    pending_bytes: std::sync::atomic::AtomicUsize,
 }
 
 impl Kv {
     pub fn new(disk: DiskStore) -> Kv {
-        Kv { disk, overlay: None }
+        Kv { disk, overlay: None, pending_bytes: Default::default() }
     }
 
     pub fn disk(&self) -> &DiskStore {
@@ -23,12 +26,14 @@ impl Kv {
     }
 
     pub fn view(&self) -> Kv {
-        Kv { disk: self.disk.clone(), overlay: Some(Mutex::new(BTreeMap::new())) }
+        Kv { disk: self.disk.clone(), overlay: Some(Mutex::new(BTreeMap::new())), pending_bytes: Default::default() }
     }
 
     fn pending(&self) -> Option<MutexGuard<'_, Overlay>> {
         self.overlay.as_ref().map(|o| o.lock().unwrap_or_else(|p| p.into_inner()))
     }
+
+fn charge(&self, entries: usize, bytes: usize) -> Result<()> { let total = self.pending_bytes.fetch_add(bytes, std::sync::atomic::Ordering::Relaxed) + bytes; if entries > MAX_PENDING_ENTRIES || total > MAX_PENDING_BYTES { return Err(Error::InvalidInput(format!("transaction too large: over {} written entries or {} bytes", MAX_PENDING_ENTRIES, MAX_PENDING_BYTES))); } Ok(()) }
 
     fn pending_batch(&self) -> Batch {
         let mut batch = Batch::new();
@@ -59,7 +64,7 @@ impl Kv {
     pub fn put(&self, key: impl Into<Vec<u8>>, value: impl Into<Vec<u8>>) -> Result<()> {
         match self.pending() {
             Some(mut pending) => {
-                pending.insert(key.into(), Some(value.into()));
+                let key = key.into(); let value = value.into(); let bytes = key.len() + value.len(); pending.insert(key, Some(value)); self.charge(pending.len(), bytes)?;
                 Ok(())
             }
             None => self.disk.put(key, value),
@@ -69,7 +74,7 @@ impl Kv {
     pub fn delete(&self, key: impl Into<Vec<u8>>) -> Result<()> {
         match self.pending() {
             Some(mut pending) => {
-                pending.insert(key.into(), None);
+                let key = key.into(); let bytes = key.len(); pending.insert(key, None); self.charge(pending.len(), bytes)?;
                 Ok(())
             }
             None => self.disk.delete(key),
@@ -85,6 +90,7 @@ impl Kv {
                         Op::Delete(k) => pending.insert(k.clone(), None),
                     };
                 }
+let added: usize = batch.ops().iter().map(|op| match op { Op::Put(k, v) => k.len() + v.len(), Op::Delete(k) => k.len() }).sum(); self.charge(pending.len(), added)?;
                 Ok(())
             }
             None => self.disk.write(batch),
