@@ -93,23 +93,6 @@ pub fn bounded_rows(db: &Database, table: &str, max_rows: usize, max_bytes: usiz
 let schema = db.schema(table)?;
 matching_rows_limited(db, &schema, &None, Some((max_rows, max_bytes)))
 }
-fn matching_rows(db: &Database, schema: &Schema, filter: &Option<Expr>) -> Result<Vec<Vec<Value>>> {
-if let Some(expr) = filter {
-check_columns(expr, schema)?;
-}
-let mut matched = Vec::new();
-for row in db.scan(&schema.name)? {
-let keep = match filter {
-Some(expr) => passes(expr, schema, &row)?,
-None => true,
-};
-if keep {
-matched.push(row);
-}
-}
-Ok(matched)
-}
-
 pub fn matching_rows_limited(db: &Database, schema: &Schema, filter: &Option<Expr>, limit: Option<(usize, usize)>) -> Result<Vec<Vec<Value>>> {
 if let Some(expr) = filter {
         check_columns(expr, schema)?;
