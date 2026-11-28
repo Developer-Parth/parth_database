@@ -9,7 +9,8 @@ const HEADER: usize = 8;
 pub const MAX_RECORD: usize = 256 * 1024 * 1024;
 
 pub struct Wal {
-    file: File,
+    file: Option<File>,
+    mem: Vec<u8>,
     len: u64,
 }
 
@@ -19,6 +20,8 @@ pub struct Recovered {
 }
 
 impl Wal {
+    pub fn in_memory() -> Wal { Wal { file: None, mem: Vec::new(), len: 0 } }
+
     pub fn open(path: &Path) -> Result<(Wal, Recovered)> {
         let mut file = OpenOptions::new().read(true).write(true).create(true).open(path)?;
         let mut buf = Vec::new();
@@ -46,7 +49,7 @@ impl Wal {
             file.sync_all()?;
         }
         file.seek(SeekFrom::Start(pos as u64))?;
-        Ok((Wal { file, len: pos as u64 }, Recovered { records, discarded_bytes: discarded }))
+        Ok((Wal { file: Some(file), mem: Vec::new(), len: pos as u64 }, Recovered { records, discarded_bytes: discarded }))
     }
 
     pub fn append(&mut self, payload: &[u8], sync: bool) -> Result<()> {
@@ -54,20 +57,21 @@ impl Wal {
         frame.extend_from_slice(&(payload.len() as u32).to_le_bytes());
         frame.extend_from_slice(&crc32(payload).to_le_bytes());
         frame.extend_from_slice(payload);
-        if let Err(e) = self.file.write_all(&frame) {
-            let _ = self.file.set_len(self.len);
-            let _ = self.file.seek(SeekFrom::Start(self.len));
+        let file = match self.file.as_mut() { Some(f) => f, None => { self.mem.extend_from_slice(&frame); self.len += frame.len() as u64; return Ok(()); } };
+        if let Err(e) = file.write_all(&frame) {
+            let _ = file.set_len(self.len);
+            let _ = file.seek(SeekFrom::Start(self.len));
             return Err(e.into());
         }
         if sync {
-            self.file.sync_data()?;
+            if let Some(f) = self.file.as_mut() { f.sync_data()?; }
         }
         self.len += frame.len() as u64;
         Ok(())
     }
 
     pub fn sync(&mut self) -> Result<()> {
-        self.file.sync_data()?;
+        if let Some(f) = self.file.as_mut() { f.sync_data()?; }
         Ok(())
     }
 
@@ -80,9 +84,7 @@ impl Wal {
     }
 
     pub fn reset(&mut self) -> Result<()> {
-        self.file.set_len(0)?;
-        self.file.seek(SeekFrom::Start(0))?;
-        self.file.sync_all()?;
+        if let Some(f) = self.file.as_mut() { f.set_len(0)?; f.seek(SeekFrom::Start(0))?; f.sync_all()?; } else { self.mem.clear(); }
         self.len = 0;
         Ok(())
     }
@@ -154,5 +156,16 @@ mod tests {
         assert_eq!(r.records, vec![b"aaaa".to_vec()]);
         assert!(r.discarded_bytes > 0);
         let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn in_memory_wal_appends_resets_and_reports_length() {
+        let mut w = Wal::in_memory();
+        w.append(b"one", true).unwrap();
+        w.append(b"two", false).unwrap();
+        w.sync().unwrap();
+        assert_eq!(w.len(), 22);
+        w.reset().unwrap();
+        assert!(w.is_empty());
     }
 }
