@@ -58,7 +58,7 @@ pub enum Statement {
         filter: Option<Expr>,
         group_by: Vec<String>,
             having: Option<Vec<(String, BinOp, Value)>>,
-        order_by: Option<(String, bool)>,
+        order_by: Vec<(String, bool)>,
         limit: Option<usize>, offset: usize,
     },
     Update { table: String, sets: Vec<(String, Expr)>, filter: Option<Expr> },
@@ -334,9 +334,9 @@ let projection = if distinct { match projection { Projection::Columns(names) => 
         let mut having = None;        
 if self.eat_keyword("HAVING") {
             let grouped = !group_by.is_empty(); let mut conditions = vec![self.having_clause(grouped)?]; while self.eat_keyword("AND") { conditions.push(self.having_clause(grouped)?); } having = Some(conditions);        }
-        let order_by = if self.eat_keyword("ORDER") {
+        let mut order_by = Vec::new(); if self.eat_keyword("ORDER") {
             self.expect_keyword("BY")?;
-            let column = if self.aggregate_ahead() {
+            loop { let column = if self.aggregate_ahead() {
                 self.aggregate()?.label()
             } else {
                 self.identifier()?
@@ -347,10 +347,8 @@ if self.eat_keyword("HAVING") {
                 self.eat_keyword("ASC");
                 false
             };
-            Some((column, descending))
-        } else {
-            None
-        };
+            order_by.push((column, descending)); if !self.eat_symbol(",") { break; } }
+        }
         let limit = if self.eat_keyword("LIMIT") {
             match self.peek() {
                 Some(Token::Int(n)) if *n >= 0 => {
@@ -609,7 +607,7 @@ mod tests {
                 filter: Some(Expr::Binary(BinOp::Ge, col("id"), int(2))),
             group_by: Vec::new(),
 having: None,
-            order_by: Some(("name".into(), true)),
+            order_by: vec![("name".into(), true)],
                 limit: Some(5), offset: 0,
             }
         );

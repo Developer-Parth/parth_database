@@ -123,7 +123,7 @@ pub fn select(
     filter: Option<Expr>,
     group_by: Vec<String>,
     having: Option<Vec<(String, BinOp, Value)>>,
-    order_by: Option<(String, bool)>,
+    order_by: Vec<(String, bool)>,
     limit: Option<usize>,
     offset: usize,
     materialize: (usize, usize),
@@ -133,7 +133,7 @@ if let Projection::Distinct(names) = &projection { if !group_by.is_empty() { ret
     if !group_by.is_empty() || matches!(projection, Projection::Items(_)) {
             return grouped_select(db, &schema, &projection, filter, &group_by, having, order_by, limit, offset, materialize);    }
     if let Projection::Aggregates(items) = &projection {
-        if order_by.is_some() {
+        if !order_by.is_empty() {
             return fail("ORDER BY is not supported with aggregates");
         }
 let rows = matching_rows_limited(db, &schema, &filter, Some(materialize))?;
@@ -164,27 +164,24 @@ Projection::Distinct(_) => Vec::new(),
     for name in &names {
         indexes.push(column_position(&schema, name)?);
     }
-    let order = match &order_by {
-        Some((name, descending)) => Some((column_position(&schema, name)?, *descending)),
-        None => None,
-    };
+    let mut order = Vec::new(); for (name, descending) in &order_by { order.push((column_position(&schema, name)?, *descending)); }
 let top_keep = limit.or(Some(MAX_RESULT_ROWS)).map(|l| offset.saturating_add(l.min(MAX_RESULT_ROWS)).saturating_add(1)).filter(|k| *k <= 2 * MAX_RESULT_ROWS + 1);
-let mut rows = match (order, top_keep) {
-(None, _) => matching_rows_window(db, &schema, &filter, offset, limit)?,
-(Some((index, descending)), Some(keep)) => matching_rows_top(db, &schema, &filter, index, descending, keep)?,
+let mut rows = match (order.len(), top_keep) {
+(0, _) => matching_rows_window(db, &schema, &filter, offset, limit)?,
+(1, Some(keep)) => matching_rows_top(db, &schema, &filter, order[0].0, order[0].1, keep)?,
 _ => matching_rows_limited(db, &schema, &filter, Some(materialize))?,
 };
-    if let Some((index, descending)) = order {
+    if !order.is_empty() {
         rows.sort_by(|a, b| {
-            let ordering = a[index].compare(&b[index]);
-            if descending {
-                ordering.reverse()
-            } else {
-                ordering
+            for (index, descending) in &order {
+            let ordering = a[*index].compare(&b[*index]);
+            let ordering = if *descending { ordering.reverse() } else { ordering };
+            if ordering != std::cmp::Ordering::Equal { return ordering; }
             }
-        });
+            std::cmp::Ordering::Equal
+});
     }
-    if order.is_some() { rows.drain(..offset.min(rows.len())); }
+    if !order.is_empty() { rows.drain(..offset.min(rows.len())); }
     let truncated = cap_rows(&mut rows, limit);
     let rows = rows
         .into_iter()
@@ -210,7 +207,7 @@ fn grouped_select(
     filter: Option<Expr>,
     group_by: &[String],
     having: Option<Vec<(String, BinOp, Value)>>,
-    order_by: Option<(String, bool)>,
+    order_by: Vec<(String, bool)>,
     limit: Option<usize>,
     offset: usize,
     materialize: (usize, usize),
@@ -263,7 +260,7 @@ Projection::Distinct(_) => return fail("SELECT DISTINCT is not supported with GR
         }
     }
 let aggregate_order = |name| columns.iter().zip(plan.iter()).position(|(label, (func, _))| func.is_some() && label == name);
-    let order = match &order_by {
+    if order_by.len() > 1 { return fail("ORDER BY with GROUP BY takes one column"); } let order = match order_by.first() {
 Some((name, descending)) if aggregate_order(name).is_some() => aggregate_order(name).map(|output| (output, *descending)),
         Some((name, descending)) => {
             let position = column_position(schema, name)?;
@@ -667,10 +664,10 @@ ordering.then(a.0.cmp(&b.0))
 buffer.truncate(keep);
 }
 
-fn distinct_select(db: &Database, schema: &Schema, names: &[String], filter: &Option<Expr>, order_by: &Option<(String, bool)>, limit: Option<usize>, offset: usize, materialize: (usize, usize)) -> Result<QueryResult> {
+fn distinct_select(db: &Database, schema: &Schema, names: &[String], filter: &Option<Expr>, order_by: &[(String, bool)], limit: Option<usize>, offset: usize, materialize: (usize, usize)) -> Result<QueryResult> {
 let mut indexes = Vec::new();
 for name in names { indexes.push(column_position(schema, name)?); }
-let order = match order_by { Some((name, descending)) => { let target = column_position(schema, name)?; match indexes.iter().position(|&i| i == target) { Some(p) => Some((p, *descending)), None => return fail("ORDER BY column must appear in the SELECT DISTINCT list") } } None => None };
+if order_by.len() > 1 { return fail("SELECT DISTINCT takes one ORDER BY column"); } let order = match order_by.first() { Some((name, descending)) => { let target = column_position(schema, name)?; match indexes.iter().position(|&i| i == target) { Some(p) => Some((p, *descending)), None => return fail("ORDER BY column must appear in the SELECT DISTINCT list") } } None => None };
 let found = matching_rows_limited(db, schema, filter, Some(materialize))?;
 let mut rows: Vec<Vec<crate::value::Value>> = found.into_iter().map(|row| indexes.iter().map(|&i| row[i].clone()).collect()).collect();
 let keys: Vec<usize> = (0..indexes.len()).collect();

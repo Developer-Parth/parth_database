@@ -38,7 +38,7 @@ Every endpoint except /api/health needs the header `Authorization: Bearer <token
 
 Column types are INT, REAL, TEXT and BOOL. Every table needs exactly one PRIMARY KEY column. A key may be at most 500 bytes and a stored row up to 1 MiB (1048576 bytes). That storage limit is separate from the 1 MB HTTP request body limit. There are no JOINs. WHERE supports BETWEEN, NOT BETWEEN, IN and NOT IN. An IN list may hold at most 256 values. NULL follows SQL unknown semantics, so id NOT IN (1, NULL) matches no rows.
 
-SELECT DISTINCT takes a plain column list, for example SELECT DISTINCT n FROM t ORDER BY n. It is not supported with *, aggregates or GROUP BY, and ORDER BY columns must appear in the DISTINCT list. NULLs collapse into one group, DISTINCT runs before LIMIT and OFFSET, and the usual materialization bounds apply. The byte budget is divided across the source rows and the projected copy, so repeated columns use more of it. The budget is an estimate of materialized data, not a verified heap cap.
+SELECT DISTINCT takes a plain column list, for example SELECT DISTINCT n FROM t ORDER BY n. It is not supported with *, aggregates or GROUP BY, and ORDER BY takes one column and it must appear in the DISTINCT list. NULLs collapse into one group, DISTINCT runs before LIMIT and OFFSET, and the usual materialization bounds apply. The byte budget is divided across the source rows and the projected copy, so repeated columns use more of it. The budget is an estimate of materialized data, not a verified heap cap.
 
 ## Aggregates
 
@@ -55,7 +55,7 @@ Rules that are tested:
 - COUNT(DISTINCT col) counts the distinct non-NULL values of one column and names its result column count_distinct(col). DISTINCT is rejected with SUM, MIN, MAX and AVG, and COUNT(DISTINCT *) is rejected.
 - Each COUNT(DISTINCT) keeps two temporary lists of references to the non-NULL values, the one evaluate builds and a sorted clone, so about 16 bytes per non-NULL row in total (the clone alone is 8). They are built one aggregate at a time and per group, stay inside the 1,000,000 row aggregate bound (about 16 MB at most) and are not counted in the byte budget. Several COUNT(DISTINCT) columns and GROUP BY are tested.
 - LIMIT 0 returns no rows, any larger LIMIT returns the one row.
-- ORDER BY without GROUP BY is rejected with aggregates. With GROUP BY, ORDER BY may name a grouping column or an aggregate that is in the select list, written as in the select list (COUNT(*), SUM(qty)). NULL aggregate results sort first ascending and last descending. An aggregate missing from the select list is rejected. Mixing plain columns with aggregates is rejected. GROUP BY is described below.
+- A plain SELECT takes one or more ORDER BY columns, each with its own ASC or DESC, such as ORDER BY a DESC, b. ORDER BY without GROUP BY is rejected with aggregates. With GROUP BY, ORDER BY takes one column and may name a grouping column or an aggregate that is in the select list, written as in the select list (COUNT(*), SUM(qty)). NULL aggregate results sort first ascending and last descending. An aggregate missing from the select list is rejected. Mixing plain columns with aggregates is rejected. GROUP BY is described below.
 
 ## Transactions
 
@@ -84,7 +84,7 @@ A script that starts with BEGIN and ends with COMMIT or ROLLBACK can be pasted i
 
 - Every plain column in the select list must appear in GROUP BY. Several grouping columns are allowed.
 - COUNT, SUM, MIN, MAX and AVG are computed per group. WHERE filters rows before grouping.
-- Groups come back in ascending order of the grouping key. ORDER BY may name a grouping column or an aggregate, and it must be in the select list. Ties between equal aggregate values come back in no fixed order. LIMIT applies to groups.
+- Groups come back in ascending order of the grouping key. ORDER BY takes one column, a grouping column or an aggregate, and it must be in the select list. Ties between equal aggregate values come back in no fixed order. LIMIT applies to groups.
 - Rejected with an error: SELECT * with GROUP BY, a column next to an aggregate without GROUP BY, a column missing from GROUP BY, and HAVING without GROUP BY. HAVING takes conditions on aggregates that are in the select list, joined with AND, such as HAVING COUNT(*) > 1 AND SUM(qty) > 5. It filters groups before ORDER BY and LIMIT, and a NULL aggregate fails it. OR and non-aggregate columns in HAVING are rejected.
 
 ## Web console
