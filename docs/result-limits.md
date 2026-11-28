@@ -42,4 +42,4 @@ Request bodies are limited to 1 MB and request headers to 16 KB.
 
 Not verified
 
-Behaviour under memory pressure has not been tested. Power-loss durability has not been verified.
+Behaviour under memory pressure has not been tested. Power-loss durability has not been verified. Aggregate and rollback tests reopen the process and crash tests use a hard kill. Neither simulates power loss. Ties in ORDER BY on an aggregate have no defined order.
