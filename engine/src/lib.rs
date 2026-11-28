@@ -16,6 +16,8 @@ pub mod table;
 pub mod txn;
 pub mod value;
 pub mod wal;
+#[cfg(target_arch = "wasm32")]
+pub mod wasm_api;
 
 pub use disk::DiskStore;
 pub use error::{Error, Result};

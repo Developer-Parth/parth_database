@@ -241,7 +241,7 @@ fn value_json(value: &Value) -> Json {
     }
 }
 
-fn result_json(result: &QueryResult) -> Json {
+pub(crate) fn result_json(result: &QueryResult) -> Json {
     let rows = result.rows.iter().map(|row| Json::Array(row.iter().map(value_json).collect())).collect();
     object(vec![
         ("columns", Json::Array(result.columns.iter().map(|c| Json::String(c.clone())).collect())),

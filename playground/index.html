@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>parth_db in-browser SQL</title>
+<style>
+body { margin: 0; padding: 32px; background: #0f172a; color: #e2e8f0; font-family: system-ui, sans-serif; }
+main { max-width: 860px; margin: 0 auto; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+p.note { margin: 0 0 16px; color: #94a3b8; font-size: 14px; }
+textarea { width: 100%; box-sizing: border-box; background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 12px; font: 14px ui-monospace, Consolas, monospace; }
+button { background: #3b82f6; color: #fff; border: 0; border-radius: 6px; padding: 8px 18px; font-size: 14px; cursor: pointer; }
+button#reset { background: #334155; }
+pre { background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 12px; max-height: 360px; overflow: auto; font: 13px ui-monospace, Consolas, monospace; }
+</style>
+</head>
+<body>
+<main>
+<h1>parth_db in-browser SQL</h1>
+<p class="note">Runs entirely in your browser on an in-memory database. Nothing is saved.</p>
+<textarea id="sql" rows="8" cols="80">BEGIN;
+CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT);
+INSERT INTO t VALUES (1, 'a');
+SELECT * FROM t;
+COMMIT;</textarea>
+<p><button id="run">Run</button> <button id="reset">Reset</button></p>
+<pre id="output">loading</pre>
+<script src="playground.js"></script>
+</main>
+</body>
+</html>
