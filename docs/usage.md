@@ -55,7 +55,7 @@ Rules that are tested:
 - COUNT(DISTINCT col) counts the distinct non-NULL values of one column and names its result column count_distinct(col). DISTINCT is rejected with SUM, MIN, MAX and AVG, and COUNT(DISTINCT *) is rejected.
 - Each COUNT(DISTINCT) keeps two temporary lists of references to the non-NULL values, the one evaluate builds and a sorted clone, so about 16 bytes per non-NULL row in total (the clone alone is 8). They are built one aggregate at a time and per group, stay inside the 1,000,000 row aggregate bound (about 16 MB at most) and are not counted in the byte budget. Several COUNT(DISTINCT) columns and GROUP BY are tested.
 - LIMIT 0 returns no rows, any larger LIMIT returns the one row.
-- ORDER BY is rejected with aggregates. Mixing plain columns with aggregates is rejected. GROUP BY is described below.
+- ORDER BY without GROUP BY is rejected with aggregates. With GROUP BY, ORDER BY may name a grouping column or an aggregate that is in the select list, written as in the select list (COUNT(*), SUM(qty)). NULL aggregate results sort first ascending and last descending. An aggregate missing from the select list is rejected. Mixing plain columns with aggregates is rejected. GROUP BY is described below.
 
 ## Transactions
 

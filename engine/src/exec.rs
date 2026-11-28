@@ -261,7 +261,9 @@ Projection::Distinct(_) => return fail("SELECT DISTINCT is not supported with GR
             }
         }
     }
+let aggregate_order = |name| columns.iter().zip(plan.iter()).position(|(label, (func, _))| func.is_some() && label == name);
     let order = match &order_by {
+Some((name, descending)) if aggregate_order(name).is_some() => aggregate_order(name).map(|output| (output, *descending)),
         Some((name, descending)) => {
             let position = column_position(schema, name)?;
             if !keys.contains(&position) {

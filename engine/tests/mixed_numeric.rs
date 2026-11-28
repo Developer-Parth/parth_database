@@ -31,4 +31,7 @@ fn integer_literal_in_real_column_dedups_with_real_value() {
     assert_eq!(count(&db, "SELECT DISTINCT r FROM t"), 2);
     assert_eq!(count(&db, "SELECT id FROM t WHERE r = 1"), 2);
     assert_eq!(count(&db, "SELECT id FROM t ORDER BY r DESC LIMIT 2"), 2);
+    let top = execute(&db, "SELECT r FROM t ORDER BY r DESC LIMIT 2").unwrap();
+    let top: Vec<String> = top.rows.iter().map(|row| format!("{:?}", row[0])).collect();
+    assert_eq!(top, vec!["Real(2.5)", "Real(1.0)"]);
 }

@@ -335,7 +335,11 @@ let projection = if distinct { match projection { Projection::Columns(names) => 
         }
         let order_by = if self.eat_keyword("ORDER") {
             self.expect_keyword("BY")?;
-            let column = self.identifier()?;
+            let column = if self.aggregate_ahead() {
+                self.aggregate()?.label()
+            } else {
+                self.identifier()?
+            };
             let descending = if self.eat_keyword("DESC") {
                 true
             } else {
