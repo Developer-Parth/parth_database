@@ -21,4 +21,4 @@ Power-loss durability is not verified. JOIN and UNION are rejected, and so is un
 
 ## Docs
 
-docs/try-it.md, docs/usage.md, docs/result-limits.md and docs/architecture.md.
+docs/try-it.md, docs/usage.md, docs/result-limits.md and docs/architecture.md. The Windows demo ZIP is on the release page https://github.com/Developer-Parth/parth_database/releases/tag/v0.1.0-demo
