@@ -249,6 +249,7 @@ function runSql() {
       return loadTables();
     }, function (err) {
       el("result-wrap").textContent = "";
+      message.textContent = "";
       showError(err);
       loadTables().catch(function () {});
     });
