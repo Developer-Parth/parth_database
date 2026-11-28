@@ -155,7 +155,7 @@ pub struct TreeReport {
 }
 
 pub struct BTree {
-    file: File,
+    file: Backing,
     meta: Meta,
     root: u64,
     next_page: u64,
@@ -190,16 +190,38 @@ fn split_point(sizes: &[usize]) -> usize {
     sizes.len() / 2
 }
 
+enum Backing { Disk(File), Mem(Vec<u8>) }
+
+impl Backing {
+    fn len(&self) -> Result<u64> { Ok(match self { Self::Disk(f) => f.metadata()?.len(), Self::Mem(v) => v.len() as u64 }) }
+    fn read_at(&mut self, at: u64, buf: &mut [u8]) -> Result<()> {
+        match self {
+            Self::Disk(f) => { f.seek(SeekFrom::Start(at))?; f.read_exact(buf)?; }
+            Self::Mem(v) => { let end = at as usize + buf.len(); let src = v.get(at as usize..end).ok_or_else(|| std::io::Error::from(std::io::ErrorKind::UnexpectedEof))?; buf.copy_from_slice(src); }
+        }
+        Ok(())
+    }
+    fn write_at(&mut self, at: u64, data: &[u8]) -> Result<()> {
+        match self {
+            Self::Disk(f) => { f.seek(SeekFrom::Start(at))?; f.write_all(data)?; }
+            Self::Mem(v) => { let end = at as usize + data.len(); if v.len() < end { v.resize(end, 0); } v[at as usize..end].copy_from_slice(data); }
+        }
+        Ok(())
+    }
+    fn sync_data(&mut self) -> Result<()> { if let Self::Disk(f) = self { f.sync_data()?; } Ok(()) }
+    fn sync_all(&mut self) -> Result<()> { if let Self::Disk(f) = self { f.sync_all()?; } Ok(()) }
+}
+
 impl BTree {
-    pub fn open(path: impl AsRef<Path>) -> Result<BTree> {
-        let mut file = OpenOptions::new().read(true).write(true).create(true).open(path)?;
-        let len = file.metadata()?.len();
+    pub fn open(path: impl AsRef<Path>) -> Result<BTree> { Self::open_backing(Backing::Disk(OpenOptions::new().read(true).write(true).create(true).open(path)?)) }
+    pub fn in_memory() -> Result<BTree> { Self::open_backing(Backing::Mem(Vec::new())) }
+        fn open_backing(mut file: Backing) -> Result<BTree> {
+        let len = file.len()?;
         let mut metas = Vec::new();
         for slot in 0..2u64 {
             if len >= (slot + 1) * PAGE_SIZE as u64 {
                 let mut page = vec![0u8; PAGE_SIZE];
-                file.seek(SeekFrom::Start(slot * PAGE_SIZE as u64))?;
-                file.read_exact(&mut page)?;
+                file.read_at(slot * PAGE_SIZE as u64, &mut page)?;
                 if let Some(m) = Meta::decode(&page) {
                     metas.push(m);
                 }
@@ -210,9 +232,7 @@ impl BTree {
             Some(m) => m,
             None if len == 0 => {
                 let m = Meta { txid: 0, root: 0, page_count: 2, entries: 0 };
-                file.seek(SeekFrom::Start(0))?;
-                file.write_all(&m.encode())?;
-                file.write_all(&m.encode())?;
+                let mut b = m.encode(); b.extend(m.encode()); file.write_at(0, &b)?;
                 file.sync_all()?;
                 m
             }
@@ -275,8 +295,7 @@ impl BTree {
             return Err(Error::Corrupt(format!("page {pid} out of range")));
         }
         let mut page = vec![0u8; PAGE_SIZE];
-        self.file.seek(SeekFrom::Start(pid * PAGE_SIZE as u64))?;
-        self.file.read_exact(&mut page)?;
+        self.file.read_at(pid * PAGE_SIZE as u64, &mut page)?;
         Node::decode(&page)
     }
 
@@ -579,13 +598,11 @@ impl BTree {
         ids.sort_unstable();
         for id in ids {
             let page = self.dirty[&id].encode()?;
-            self.file.seek(SeekFrom::Start(id * PAGE_SIZE as u64))?;
-            self.file.write_all(&page)?;
+            self.file.write_at(id * PAGE_SIZE as u64, &page)?;
         }
         self.file.sync_data()?;
         let next = Meta { txid: self.meta.txid + 1, root: self.root, page_count: self.next_page, entries: self.entries };
-        self.file.seek(SeekFrom::Start((next.txid % 2) * PAGE_SIZE as u64))?;
-        self.file.write_all(&next.encode())?;
+        self.file.write_at((next.txid % 2) * PAGE_SIZE as u64, &next.encode())?;
         self.file.sync_data()?;
         self.meta = next;
         let previous = std::mem::take(&mut self.pending);
