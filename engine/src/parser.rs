@@ -44,6 +44,7 @@ pub enum Projection {
     Items(Vec<SelectItem>),
     All,
     Columns(Vec<String>),
+Distinct(Vec<String>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -313,12 +314,13 @@ impl Parser {
     }
 
     fn select(&mut self) -> Result<Statement> {
-if self.eat_keyword("DISTINCT") { return fail("SELECT DISTINCT is not supported"); }
+let distinct = self.eat_keyword("DISTINCT");
         let projection = if self.eat_symbol("*") {
             Projection::All
         } else {
             self.select_items()?
         };        self.expect_keyword("FROM")?;
+let projection = if distinct { match projection { Projection::Columns(names) => Projection::Distinct(names), Projection::All => return fail("SELECT DISTINCT * is not supported, list the columns"), _ => return fail("SELECT DISTINCT supports only plain column lists"), } } else { projection };
         let table = self.identifier()?;
         let filter = self.where_clause()?;
         let group_by = if self.eat_keyword("GROUP") {

@@ -38,6 +38,8 @@ Every endpoint except /api/health needs the header `Authorization: Bearer <token
 
 Column types are INT, REAL, TEXT and BOOL. Every table needs exactly one PRIMARY KEY column. A key may be at most 500 bytes and a stored row up to 1 MiB (1048576 bytes). That storage limit is separate from the 1 MB HTTP request body limit. There are no JOINs. WHERE supports BETWEEN, NOT BETWEEN, IN and NOT IN. An IN list may hold at most 256 values. NULL follows SQL unknown semantics, so id NOT IN (1, NULL) matches no rows.
 
+SELECT DISTINCT takes a plain column list, for example SELECT DISTINCT n FROM t ORDER BY n. It is not supported with *, aggregates or GROUP BY, and ORDER BY columns must appear in the DISTINCT list. NULLs collapse into one group, DISTINCT runs before LIMIT and OFFSET, and the usual materialization bounds apply. The byte budget is divided across the source rows and the projected copy, so repeated columns use more of it. The budget is an estimate of materialized data, not a verified heap cap.
+
 ## Aggregates
 
 SELECT accepts COUNT, SUM, MIN, MAX and AVG, alone or combined in one select list:

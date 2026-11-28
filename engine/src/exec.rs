@@ -128,6 +128,7 @@ pub fn select(
     materialize: (usize, usize),
 ) -> Result<QueryResult> {
     let schema = db.schema(table)?;
+if let Projection::Distinct(names) = &projection { if !group_by.is_empty() { return fail("SELECT DISTINCT is not supported with GROUP BY"); } return distinct_select(db, &schema, names, &filter, &order_by, limit, offset, (materialize.0, materialize.1 / (names.len() + 1))); }
     if !group_by.is_empty() || matches!(projection, Projection::Items(_)) {
         return grouped_select(db, &schema, &projection, filter, &group_by, order_by, limit, offset, materialize);
     }
@@ -157,6 +158,7 @@ let rows = matching_rows_limited(db, &schema, &filter, Some(materialize))?;
         Projection::Columns(names) => names,
         Projection::Aggregates(_) => Vec::new(),
         Projection::Items(_) => Vec::new(),
+Projection::Distinct(_) => Vec::new(),
     };
     let mut indexes = Vec::new();
     for name in &names {
@@ -214,6 +216,7 @@ fn grouped_select(
 ) -> Result<QueryResult> {
     let items: Vec<crate::aggregate::SelectItem> = match projection {
         Projection::All => return fail("SELECT * is not supported with GROUP BY"),
+Projection::Distinct(_) => return fail("SELECT DISTINCT is not supported with GROUP BY"),
         Projection::Columns(names) => names
             .iter()
             .cloned()
@@ -646,4 +649,19 @@ let ordering = if descending { ordering.reverse() } else { ordering };
 ordering.then(a.0.cmp(&b.0))
 });
 buffer.truncate(keep);
+}
+
+fn distinct_select(db: &Database, schema: &Schema, names: &[String], filter: &Option<Expr>, order_by: &Option<(String, bool)>, limit: Option<usize>, offset: usize, materialize: (usize, usize)) -> Result<QueryResult> {
+let mut indexes = Vec::new();
+for name in names { indexes.push(column_position(schema, name)?); }
+let order = match order_by { Some((name, descending)) => { let target = column_position(schema, name)?; match indexes.iter().position(|&i| i == target) { Some(p) => Some((p, *descending)), None => return fail("ORDER BY column must appear in the SELECT DISTINCT list") } } None => None };
+let found = matching_rows_limited(db, schema, filter, Some(materialize))?;
+let mut rows: Vec<Vec<crate::value::Value>> = found.into_iter().map(|row| indexes.iter().map(|&i| row[i].clone()).collect()).collect();
+let keys: Vec<usize> = (0..indexes.len()).collect();
+rows.sort_by(|a, b| compare_keys(&keys, a, b));
+rows.dedup_by(|a, b| compare_keys(&keys, a, b) == std::cmp::Ordering::Equal);
+if let Some((p, descending)) = order { rows.sort_by(|a, b| { let ordering = a[p].compare(&b[p]); if descending { ordering.reverse() } else { ordering } }); }
+rows.drain(..offset.min(rows.len()));
+let truncated = cap_rows(&mut rows, limit);
+Ok(QueryResult { columns: names.to_vec(), rows, affected: 0, truncated })
 }

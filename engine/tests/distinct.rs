@@ -1,17 +1,21 @@
 use parth_db::exec::execute;
 use parth_db::table::Database;
+use parth_db::parser::Projection;
+use parth_db::exec::select;
+
+fn open(name: &str) -> Database { let dir = std::env::temp_dir().join(format!("pd_distinct_{}_{}", name, std::process::id())); let _ = std::fs::remove_dir_all(&dir); Database::open(&dir).unwrap() }
+fn count(db: &Database, sql: &str) -> usize { execute(db, sql).unwrap().rows.len() }
+fn dump(db: &Database, sql: &str) -> String { format!("{:?}", execute(db, sql).unwrap().rows) }
 
 #[test]
-fn select_distinct_is_rejected_explicitly() {
-    let dir = std::env::temp_dir().join(format!("pd_distinct_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    let db = Database::open(&dir).unwrap();
-    execute(&db, "CREATE TABLE t (id INT PRIMARY KEY, n INT)").unwrap();
-    execute(&db, "INSERT INTO t VALUES (1, 5), (2, 5)").unwrap();
-    for sql in ["SELECT DISTINCT n FROM t", "SELECT DISTINCT * FROM t"] {
-        let message = format!("{}", execute(&db, sql).unwrap_err());
-        assert!(message.contains("DISTINCT"), "{message}");
-    }
-    assert_eq!(execute(&db, "SELECT n FROM t").unwrap().rows.len(), 2);
-    let _ = std::fs::remove_dir_all(&dir);
-}
+fn duplicates_and_nulls_collapse() { let db = open("nulls"); execute(&db, "CREATE TABLE t (id INT PRIMARY KEY, n INT, r REAL)").unwrap(); execute(&db, "INSERT INTO t VALUES (1, 5, 5.0), (2, 5, 5.0), (3, NULL, NULL), (4, NULL, 2.5), (5, 7, NULL), (6, NULL, NULL)").unwrap(); assert_eq!(count(&db, "SELECT DISTINCT n FROM t"), 3); assert_eq!(count(&db, "SELECT DISTINCT r FROM t"), 3); assert_eq!(count(&db, "SELECT DISTINCT n, r FROM t"), 4); assert_eq!(count(&db, "SELECT n FROM t"), 6); }
+#[test]
+fn limit_offset_order_apply_after_dedup() { let db = open("order"); execute(&db, "CREATE TABLE t (id INT PRIMARY KEY, n INT)").unwrap(); execute(&db, "INSERT INTO t VALUES (1, 3), (2, 1), (3, 3), (4, 2), (5, 2), (6, 1)").unwrap(); assert_eq!(count(&db, "SELECT DISTINCT n FROM t"), 3); assert_eq!(count(&db, "SELECT DISTINCT n FROM t LIMIT 3"), 3); assert_eq!(count(&db, "SELECT DISTINCT n FROM t WHERE n > 1"), 2); assert_eq!(dump(&db, "SELECT DISTINCT n FROM t ORDER BY n DESC LIMIT 1"), dump(&db, "SELECT n FROM t WHERE id = 1")); assert_eq!(dump(&db, "SELECT DISTINCT n FROM t ORDER BY n DESC LIMIT 1 OFFSET 1"), dump(&db, "SELECT n FROM t WHERE id = 4")); assert_eq!(count(&db, "SELECT DISTINCT n FROM t LIMIT 5 OFFSET 2"), 1); assert!(execute(&db, "SELECT DISTINCT n FROM t ORDER BY id").is_err()); }
+#[test]
+fn unsupported_combinations_are_rejected() { let db = open("reject"); execute(&db, "CREATE TABLE t (id INT PRIMARY KEY, n INT)").unwrap(); execute(&db, "INSERT INTO t VALUES (1, 5), (2, 5)").unwrap(); for sql in ["SELECT DISTINCT * FROM t", "SELECT DISTINCT COUNT(*) FROM t", "SELECT DISTINCT n FROM t GROUP BY n"] { let message = format!("{}", execute(&db, sql).unwrap_err()); assert!(message.contains("DISTINCT"), "{message}"); } assert_eq!(count(&db, "SELECT n FROM t"), 2); }
+
+
+#[test]
+fn materialization_bound_applies_to_distinct() { let db = open("bound"); execute(&db, "CREATE TABLE t (id INT PRIMARY KEY, n INT)").unwrap(); let values: Vec<String> = (1..=50).map(|i| format!("({}, {})", i, i % 5)).collect(); execute(&db, &format!("INSERT INTO t VALUES {}", values.join(", "))).unwrap(); let run = |bound: (usize, usize)| select(&db, "t", Projection::Distinct(vec!["n".to_string()]), None, Vec::new(), None, None, 0, bound); assert!(run((10, usize::MAX)).is_err()); assert!(run((1_000_000, 100)).is_err()); assert_eq!(run((1_000_000, 134_217_728)).unwrap().rows.len(), 5); }
+#[test]
+fn repeated_projected_columns_count_against_the_budget() { let db = open("repeat"); execute(&db, "CREATE TABLE t (id INT PRIMARY KEY, n INT)").unwrap(); let values: Vec<String> = (1..=50).map(|i| format!("({}, {})", i, i % 5)).collect(); execute(&db, &format!("INSERT INTO t VALUES {}", values.join(", "))).unwrap(); let run = |names: &[&str], budget: usize| select(&db, "t", Projection::Distinct(names.iter().map(|n| n.to_string()).collect()), None, Vec::new(), None, None, 0, (1_000_000, budget)); let fit = (1..100_000).find(|b| run(&["n"], *b).is_ok()).unwrap(); assert!(run(&["n", "n", "n"], fit).is_err()); assert!(run(&["n", "n", "n"], fit * 4).is_ok()); }
