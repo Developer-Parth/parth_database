@@ -9,6 +9,7 @@ async function load() {
 }
 
 function run(text) {
+if (!wasm) { return { error: "module not loaded" }; }  
   const bytes = new TextEncoder().encode(text);
   const ptr = wasm.input_buffer(bytes.length);
   if (ptr === 0) {
@@ -39,7 +40,8 @@ function format(result) {
 }
 
 document.getElementById("reset").addEventListener("click", () => {
-  wasm.reset();
+  if (!wasm) { return; }
+    wasm.reset();
   output.textContent = "database reset";
 });
 
