@@ -119,4 +119,4 @@ The browser modules are covered by plain node scripts in web_tests: csv, guarded
 
 ## Limits
 
-Crash safety was tested by killing the process. Behaviour under power loss has not been verified.
+Crash safety was tested by killing the process. Behaviour under power loss has not been verified. Aggregate and rollback tests reopen the process, they do not kill it. COUNT(DISTINCT) and text MIN and MAX inside HAVING are covered by tests. Ties in ORDER BY on an aggregate have no defined order.
