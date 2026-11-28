@@ -193,4 +193,10 @@ mod tests {
         assert_eq!(Value::Text("b".into()).compare(&Value::Text("a".into())), Ordering::Greater);
         assert_eq!(Value::Int(9).compare(&Value::Text("a".into())), Ordering::Less);
     }
+
+    #[test]
+    fn int_and_real_with_the_same_value_are_equal() {
+        assert_eq!(Value::Int(1).compare(&Value::Real(1.0)), Ordering::Equal);
+        assert_eq!(Value::Real(1.0).compare(&Value::Int(1)), Ordering::Equal);
+    }
 }
