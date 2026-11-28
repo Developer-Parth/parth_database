@@ -57,7 +57,7 @@ pub enum Statement {
         projection: Projection,
         filter: Option<Expr>,
         group_by: Vec<String>,
-            having: Option<Vec<(Aggregate, BinOp, Value)>>,
+            having: Option<Vec<Vec<(Aggregate, BinOp, Value)>>>,
         order_by: Vec<(String, bool)>,
         limit: Option<usize>, offset: usize,
     },
@@ -333,7 +333,7 @@ let projection = if distinct { match projection { Projection::Columns(names) => 
         };
         let mut having = None;        
 if self.eat_keyword("HAVING") {
-            let grouped = !group_by.is_empty(); let mut conditions = vec![self.having_clause(grouped)?]; while self.eat_keyword("AND") { conditions.push(self.having_clause(grouped)?); } having = Some(conditions);        }
+            let grouped = !group_by.is_empty(); let mut groups = Vec::new(); loop { let mut conditions = vec![self.having_clause(grouped)?]; while self.eat_keyword("AND") { conditions.push(self.having_clause(grouped)?); } groups.push(conditions); if !self.eat_keyword("OR") { break; } } having = Some(groups); }
         let mut order_by = Vec::new(); if self.eat_keyword("ORDER") {
             self.expect_keyword("BY")?;
             loop { let column = if self.aggregate_ahead() {

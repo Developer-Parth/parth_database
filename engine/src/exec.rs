@@ -122,7 +122,7 @@ pub fn select(
     projection: Projection,
     filter: Option<Expr>,
     group_by: Vec<String>,
-    having: Option<Vec<(crate::aggregate::Aggregate, BinOp, Value)>>,
+    having: Option<Vec<Vec<(crate::aggregate::Aggregate, BinOp, Value)>>>,
     order_by: Vec<(String, bool)>,
     limit: Option<usize>,
     offset: usize,
@@ -206,7 +206,7 @@ fn grouped_select(
     projection: &Projection,
     filter: Option<Expr>,
     group_by: &[String],
-    having: Option<Vec<(crate::aggregate::Aggregate, BinOp, Value)>>,
+    having: Option<Vec<Vec<(crate::aggregate::Aggregate, BinOp, Value)>>>,
     order_by: Vec<(String, bool)>,
     limit: Option<usize>,
     offset: usize,
@@ -277,7 +277,7 @@ Some((name, descending)) if aggregate_order(name).is_some() => aggregate_order(n
         }
         None => None,
     };
-    let visible = columns.len(); let mut checks = Vec::new(); for (aggregate, op, value) in having.iter().flatten() { let label = aggregate.label(); let found = columns.iter().zip(plan.iter()).position(|(name, (func, _))| func.is_some() && *name == label); let index = match found { Some(index) => index, None => { let column = match &aggregate.column { Some(name) => { let at = column_position(schema, name)?; if matches!(aggregate.func, crate::aggregate::AggFunc::Sum | crate::aggregate::AggFunc::Avg) && matches!(schema.columns[at].ty, crate::table::ColumnType::Text | crate::table::ColumnType::Bool) { return fail(format!("{} needs a numeric column", aggregate.func.name())); } Some(at) } None => None }; plan.push((Some(aggregate.func), column)); plan.len() - 1 } }; checks.push((index, op, value)); } let mut rows = matching_rows_limited(db, schema, &filter, Some(materialize))?; rows.sort_by(|a, b| compare_keys(&keys, a, b));
+    let visible = columns.len(); let mut checks = Vec::new(); for (gi, group) in having.iter().flatten().enumerate() { for (aggregate, op, value) in group { let label = aggregate.label(); let found = columns.iter().zip(plan.iter()).position(|(name, (func, _))| func.is_some() && *name == label); let index = match found { Some(index) => index, None => { let column = match &aggregate.column { Some(name) => { let at = column_position(schema, name)?; if matches!(aggregate.func, crate::aggregate::AggFunc::Sum | crate::aggregate::AggFunc::Avg) && matches!(schema.columns[at].ty, crate::table::ColumnType::Text | crate::table::ColumnType::Bool) { return fail(format!("{} needs a numeric column", aggregate.func.name())); } Some(at) } None => None }; plan.push((Some(aggregate.func), column)); plan.len() - 1 } }; if checks.len() <= gi { checks.push(Vec::new()); } checks[gi].push((index, op, value)); } } let mut rows = matching_rows_limited(db, schema, &filter, Some(materialize))?; rows.sort_by(|a, b| compare_keys(&keys, a, b));
     let mut output: Vec<Vec<crate::value::Value>> = Vec::new();
     let mut start = 0;
     while start < rows.len() {
@@ -305,10 +305,10 @@ Some((name, descending)) if aggregate_order(name).is_some() => aggregate_order(n
         output.push(line);
         start = end;
     }
-    for &(index, op, value) in &checks {
+    if !checks.is_empty() {
         let mut kept = Vec::new();
         for line in output {
-            if binary(op.clone(), line[index].clone(), value.clone())? == Value::Bool(true) {
+            let mut any = false; for group in &checks { let mut all = true; for &(index, op, value) in group { if binary(op.clone(), line[index].clone(), value.clone())? != Value::Bool(true) { all = false; break; } } if all { any = true; break; } } if any {
                 kept.push(line);
             }
         }

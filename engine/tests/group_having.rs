@@ -25,4 +25,31 @@ fn having_combines_conditions_with_and() { let db = open("gh_and"); seed(&db); a
 #[test] fn hidden_count_distinct_and_text_min_max() { let db = open("gh_distinct"); seed(&db); let r = execute(&db, "SELECT g FROM t GROUP BY g HAVING COUNT(DISTINCT v) > 1").unwrap(); assert_eq!(r.columns, vec!["g".to_string()]); assert!(r.rows.iter().all(|row| row.len() == 1)); assert_eq!(firsts(&db, "SELECT g FROM t GROUP BY g HAVING COUNT(DISTINCT v) > 1"), names(&["a"])); assert_eq!(firsts(&db, "SELECT g FROM t GROUP BY g HAVING COUNT(DISTINCT v) = 0"), names(&["c"])); assert_eq!(firsts(&db, "SELECT g FROM t GROUP BY g HAVING COUNT(DISTINCT v) >= 1 ORDER BY g"), names(&["a", "b"])); assert_eq!(firsts(&db, "SELECT g FROM t GROUP BY g HAVING MAX(g) = 'b'"), names(&["b"])); assert_eq!(firsts(&db, "SELECT g FROM t GROUP BY g HAVING MIN(g) < 'c' ORDER BY g"), names(&["a", "b"])); assert_eq!(firsts(&db, "SELECT g FROM t GROUP BY g HAVING MIN(v) < 100 ORDER BY g"), names(&["a", "b"])); assert!(execute(&db, "SELECT g FROM t WHERE id > 100 GROUP BY g HAVING COUNT(DISTINCT v) > 1").unwrap().rows.is_empty()); }
 #[test]fn hidden_aggregate_types_are_checked_without_rows() { let db = open("gh_types"); seed(&db); assert!(execute(&db, "SELECT g, COUNT(*) FROM t WHERE id > 100 GROUP BY g HAVING SUM(g) > 1").is_err()); assert!(execute(&db, "SELECT g, COUNT(*) FROM t WHERE id > 100 GROUP BY g HAVING AVG(g) > 1").is_err()); assert!(execute(&db, "SELECT g, COUNT(*) FROM t WHERE id > 100 GROUP BY g HAVING SUM(v) > 1").unwrap().rows.is_empty()); }
 #[test]
-fn unsupported_having_forms_are_rejected() { let db = open("gh_reject"); seed(&db); assert!(execute(&db, "SELECT g, COUNT(*) FROM t HAVING COUNT(*) > 1").is_err()); assert!(execute(&db, "SELECT g, COUNT(*) FROM t GROUP BY g HAVING COUNT(*) > 1 OR COUNT(*) < 5").is_err()); assert!(execute(&db, "SELECT g, COUNT(*) FROM t GROUP BY g HAVING g > 1").is_err()); assert!(execute(&db, "SELECT g FROM t GROUP BY g HAVING g > 1").is_err()); }
+fn unsupported_having_forms_are_rejected() { let db = open("gh_reject"); seed(&db); assert!(execute(&db, "SELECT g, COUNT(*) FROM t HAVING COUNT(*) > 1").is_err()); assert!(execute(&db, "SELECT g, COUNT(*) FROM t GROUP BY g HAVING COUNT(*) > 1 OR").is_err()); assert!(execute(&db, "SELECT g, COUNT(*) FROM t GROUP BY g HAVING g > 1").is_err()); assert!(execute(&db, "SELECT g FROM t GROUP BY g HAVING g > 1").is_err()); }
+
+#[test]
+fn having_or_matches_the_union_of_its_branches() {
+    let db = open("gh_or");
+    seed(&db);
+    let q = |cond: &str| {
+        firsts(&db, &format!("SELECT g, COUNT(*) FROM t GROUP BY g HAVING {} ORDER BY g", cond))
+    };
+    let mut expected = q("COUNT(*) = 1");
+    expected.extend(q("COUNT(*) > 1 AND SUM(v) > 5"));
+    expected.sort();
+    assert_eq!(q("COUNT(*) = 1 OR COUNT(*) > 1 AND SUM(v) > 5"), expected);
+    assert_eq!(q("COUNT(*) > 1 AND SUM(v) > 5 OR COUNT(*) = 1"), expected);
+}
+
+#[test]
+fn having_or_with_a_hidden_aggregate_and_nulls() {
+    let db = open("gh_or_hidden");
+    seed(&db);
+    let q = |cond: &str| firsts(&db, &format!("SELECT g FROM t GROUP BY g HAVING {} ORDER BY g", cond));
+    let mut expected = q("COUNT(*) = 1");
+    expected.extend(q("SUM(v) > 5"));
+    expected.sort();
+    expected.dedup();
+    assert_eq!(q("COUNT(*) = 1 OR SUM(v) > 5"), expected);
+    assert!(execute(&db, "SELECT g FROM t GROUP BY g HAVING COUNT(*) > 1 OR").is_err());
+}
