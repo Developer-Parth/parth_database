@@ -7,6 +7,16 @@ A small relational database engine written in Rust, with an HTTP API and a brows
 
 Unzip the demo bundle, run start.cmd, and the console opens at http://127.0.0.1:8787/. The demo token and sample queries are in docs/try-it.md.
 
+## Browser playground (local only)
+
+The engine also builds to WebAssembly and runs an in-memory database in a browser page. It is a separate path from the disk engine: nothing is saved and no server is involved. It is not hosted anywhere.
+
+To rebuild the module, run `rustup target add wasm32-unknown-unknown`, then from engine/ run `cargo build --release --target wasm32-unknown-unknown` and copy target/wasm32-unknown-unknown/release/parth_db.wasm to playground/parth_db.wasm.
+
+To use it, serve the playground folder from a local static server, for example `python -m http.server 8002 --bind 127.0.0.1 --directory playground`, and open http://127.0.0.1:8002/index.html. Opening index.html straight from disk does not load the module.
+
+`node web_tests/wasm_playground.test.js` checks the module, including 2000 reset-and-run cycles with an unchanged WebAssembly memory size. That is not a general leak-free claim.
+
 ## Build from source
 
 From the engine folder run cargo build --release, and cargo test for the engine tests. The web tests run with node, one file at a time, from web_tests.
