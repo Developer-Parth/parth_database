@@ -142,6 +142,10 @@ impl Database {
         Ok(Database { store: Kv::new(DiskStore::open(dir)?) })
     }
 
+    pub fn in_memory() -> Result<Database> {
+        Ok(Database { store: Kv::new(DiskStore::in_memory()?) })
+    }
+
     pub fn store(&self) -> &DiskStore {
         self.store.disk()
     }
