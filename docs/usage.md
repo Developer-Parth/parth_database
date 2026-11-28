@@ -84,7 +84,7 @@ A script that starts with BEGIN and ends with COMMIT or ROLLBACK can be pasted i
 
 - Every plain column in the select list must appear in GROUP BY. Several grouping columns are allowed.
 - COUNT, SUM, MIN, MAX and AVG are computed per group. WHERE filters rows before grouping.
-- Groups come back in ascending order of the grouping key. ORDER BY may only name a grouping column that is in the select list. LIMIT applies to groups.
+- Groups come back in ascending order of the grouping key. ORDER BY may name a grouping column or an aggregate, and it must be in the select list. Ties between equal aggregate values come back in no fixed order. LIMIT applies to groups.
 - Rejected with an error: SELECT * with GROUP BY, a column next to an aggregate without GROUP BY, a column missing from GROUP BY, and HAVING without GROUP BY. HAVING takes conditions on aggregates that are in the select list, joined with AND, such as HAVING COUNT(*) > 1 AND SUM(qty) > 5. It filters groups before ORDER BY and LIMIT, and a NULL aggregate fails it. OR and non-aggregate columns in HAVING are rejected.
 
 ## Web console
