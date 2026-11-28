@@ -53,6 +53,7 @@ Rules that are tested:
 - SUM of INT columns is INT and fails with an error on integer overflow. AVG is REAL. A REAL result that is not finite is an error.
 - SUM and AVG need a numeric column. Only COUNT accepts *.
 - COUNT(DISTINCT col) counts the distinct non-NULL values of one column and names its result column count_distinct(col). DISTINCT is rejected with SUM, MIN, MAX and AVG, and COUNT(DISTINCT *) is rejected.
+- Each COUNT(DISTINCT) works on a temporary list of references to the non-NULL values, about 8 bytes per row, built one aggregate at a time and per group. It stays inside the 1,000,000 row aggregate bound and is not counted in the byte budget. Several COUNT(DISTINCT) columns and GROUP BY are tested.
 - LIMIT 0 returns no rows, any larger LIMIT returns the one row.
 - ORDER BY is rejected with aggregates. Mixing plain columns with aggregates is rejected. GROUP BY is described below.
 
