@@ -58,3 +58,8 @@ assert.ok(run("SELECT * FROM u JOIN u ON 1 = 1").error);
 
 wasm.reset();
 assert.ok(run("SELECT * FROM u").error);
+
+wasm.reset();
+const grouped = run("BEGIN; CREATE TABLE t (id INTEGER PRIMARY KEY, g TEXT, v INTEGER); INSERT INTO t VALUES (1, 'a', 1); INSERT INTO t VALUES (2, 'a', 2); INSERT INTO t VALUES (3, 'b', 5); INSERT INTO t VALUES (4, 'b', 6); INSERT INTO t VALUES (5, 'c', 10); SELECT g, SUM(v) FROM t GROUP BY g HAVING SUM(v) > 10 OR COUNT(*) = 1 ORDER BY g; COMMIT;");
+assert.strictEqual(grouped.committed, true);
+assert.deepStrictEqual(grouped.results[6].rows, [["b", 11], ["c", 10]]);
