@@ -102,7 +102,8 @@ The web console is a browser client for the parth_database HTTP API. It does not
 - Download CSV in the SQL box exports all returned rows, not only the visible page. The label shows the count.
 - When a multi-statement request is rolled back, the result is shown without a CSV export.
 - Late or out of order SQL responses and errors are ignored, and switching servers drops a request in flight.
-
+- When the server cannot be reached the page shows Cannot 
+reach server (blocked, offline or mixed content). A wrong token shows Token rejected and marks the last known data as stale. A statement the engine cannot parse shows its error, such as expected a statement. The Running label clears after any failed query.
 ## Query history
 
 - History is kept in the browser only when Remember queries is ticked. It stores SQL text only, up to 25 entries per server, and never the token.
