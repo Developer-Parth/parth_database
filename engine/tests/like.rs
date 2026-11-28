@@ -38,6 +38,6 @@ fn like_filters_update_delete_and_aggregates() {
     execute(&db, "DELETE FROM u WHERE s LIKE 'z_z'").unwrap();
     assert_eq!(count(&db, "SELECT * FROM u"), 2);
     let rows = execute(&db, "SELECT COUNT(*) FROM u WHERE s LIKE '%c'").unwrap().rows;
-    assert_eq!(format!("{:?}", rows[0][0]), format!("{:?}", execute(&db, "SELECT COUNT(*) FROM u WHERE id = 3").unwrap().rows[0][0]));
+    assert_eq!(rows[0][0], parth_db::value::Value::Int(1));
     let _ = std::fs::remove_dir_all(&dir);
 }
