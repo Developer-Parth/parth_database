@@ -39,9 +39,8 @@ pub fn run(db: &Database, statement: Statement) -> Result<QueryResult> {
             Ok(QueryResult::affected(0))
         }
         Statement::Insert { table, columns, rows } => insert(db, &table, columns, rows),
-        Statement::Select { table, projection, filter, group_by, order_by, limit, offset } => {
-            select(db, &table, projection, filter, group_by, order_by, limit, offset, (MAX_MATERIALIZED_ROWS, MAX_MATERIALIZED_BYTES))
-        }
+Statement::Select { table, projection, filter, group_by, having, order_by, limit, offset } => {        select(db, &table, projection, filter, group_by, having, order_by, limit, offset, (MAX_MATERIALIZED_ROWS, MAX_MATERIALIZED_BYTES))
+}
         Statement::Update { table, sets, filter } => update(db, &table, sets, filter),
         Statement::Delete { table, filter } => delete(db, &table, filter),
     }
@@ -122,6 +121,7 @@ pub fn select(
     projection: Projection,
     filter: Option<Expr>,
     group_by: Vec<String>,
+    having: Option<(String, BinOp, Value)>,
     order_by: Option<(String, bool)>,
     limit: Option<usize>,
     offset: usize,
@@ -130,8 +130,7 @@ pub fn select(
     let schema = db.schema(table)?;
 if let Projection::Distinct(names) = &projection { if !group_by.is_empty() { return fail("SELECT DISTINCT is not supported with GROUP BY"); } return distinct_select(db, &schema, names, &filter, &order_by, limit, offset, (materialize.0, materialize.1 / (names.len() + 1))); }
     if !group_by.is_empty() || matches!(projection, Projection::Items(_)) {
-        return grouped_select(db, &schema, &projection, filter, &group_by, order_by, limit, offset, materialize);
-    }
+            return grouped_select(db, &schema, &projection, filter, &group_by, having, order_by, limit, offset, materialize);    }
     if let Projection::Aggregates(items) = &projection {
         if order_by.is_some() {
             return fail("ORDER BY is not supported with aggregates");
@@ -209,6 +208,7 @@ fn grouped_select(
     projection: &Projection,
     filter: Option<Expr>,
     group_by: &[String],
+    having: Option<(String, BinOp, Value)>,
     order_by: Option<(String, bool)>,
     limit: Option<usize>,
     offset: usize,
@@ -307,6 +307,19 @@ Some((name, descending)) if aggregate_order(name).is_some() => aggregate_order(n
         }
         output.push(line);
         start = end;
+    }
+    if let Some((label, op, value)) = &having {
+        let index = match aggregate_order(label) {
+            Some(index) => index,
+            None => return fail("HAVING aggregate must be in the select list"),
+        };
+        let mut kept = Vec::new();
+        for line in output {
+            if binary(op.clone(), line[index].clone(), value.clone())? == Value::Bool(true) {
+                kept.push(line);
+            }
+        }
+        output = kept;
     }
     if let Some((position, descending)) = order {
         output.sort_by(|a, b| {

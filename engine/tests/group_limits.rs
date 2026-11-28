@@ -16,8 +16,8 @@ fn seeded(tag: &str) -> Database {
 fn grouped_ok(db: &Database, materialize: (usize, usize)) -> bool {
     let statement = parse("SELECT v, COUNT(*) FROM t GROUP BY v").unwrap();
     match statement {
-        Statement::Select { table, projection, filter, group_by, order_by, limit, offset } => {
-            select(db, &table, projection, filter, group_by, order_by, limit, offset, materialize).is_ok()
+        Statement::Select { table, projection, filter, group_by, having, order_by, limit, offset } => {
+            select(db, &table, projection, filter, group_by, having, order_by, limit, offset, materialize).is_ok()
         }
         _ => false,
     }
@@ -46,9 +46,9 @@ fn order_by_beyond_top_n_rejects_when_byte_bound_is_exceeded() {
     let db = seeded("fallback");
     let statement = parse("SELECT v FROM t ORDER BY v LIMIT 10 OFFSET 20000").unwrap();
     match statement {
-        Statement::Select { table, projection, filter, group_by, order_by, limit, offset } => {
-            assert!(select(&db, &table, projection.clone(), filter.clone(), group_by.clone(), order_by.clone(), limit, offset, (usize::MAX, 1)).is_err());
-            assert!(select(&db, &table, projection, filter, group_by, order_by, limit, offset, (usize::MAX, usize::MAX)).is_ok());
+        Statement::Select { table, projection, filter, group_by, having, order_by, limit, offset } => {
+            assert!(select(&db, &table, projection.clone(), filter.clone(), group_by.clone(), having.clone(), order_by.clone(), limit, offset, (usize::MAX, 1)).is_err());
+            assert!(select(&db, &table, projection, filter, group_by, having, order_by, limit, offset, (usize::MAX, usize::MAX)).is_ok());
         }
         _ => panic!(),
     }
@@ -61,8 +61,8 @@ fn order_by_beyond_top_n_rejects_inside_transaction_with_pending_write() {
     let rejected = db.transaction(false, |tx| {
         execute(tx, "INSERT INTO t VALUES (100, 'p')")?;
         match statement {
-            Statement::Select { table, projection, filter, group_by, order_by, limit, offset } => {
-                Ok(select(tx, &table, projection, filter, group_by, order_by, limit, offset, (usize::MAX, 1)).is_err())
+            Statement::Select { table, projection, filter, group_by, having, order_by, limit, offset } => {
+                Ok(select(tx, &table, projection, filter, group_by, having, order_by, limit, offset, (usize::MAX, 1)).is_err())
             }
             _ => Ok(false),
         }

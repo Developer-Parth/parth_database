@@ -57,6 +57,7 @@ pub enum Statement {
         projection: Projection,
         filter: Option<Expr>,
         group_by: Vec<String>,
+            having: Option<(String, BinOp, Value)>,
         order_by: Option<(String, bool)>,
         limit: Option<usize>, offset: usize,
     },
@@ -330,9 +331,9 @@ let projection = if distinct { match projection { Projection::Columns(names) => 
         } else {
             Vec::new()
         };
-        if self.eat_keyword("HAVING") {
-            return fail("HAVING is not supported");
-        }
+        let mut having = None;        
+if self.eat_keyword("HAVING") {
+            having = Some(self.having_clause(!group_by.is_empty())?);        }
         let order_by = if self.eat_keyword("ORDER") {
             self.expect_keyword("BY")?;
             let column = if self.aggregate_ahead() {
@@ -374,7 +375,31 @@ let projection = if distinct { match projection { Projection::Columns(names) => 
         } else {
             0
         };
-        Ok(Statement::Select { table, projection, filter, group_by, order_by, limit, offset })
+        Ok(Statement::Select { table, projection, filter, group_by, having, order_by, limit, offset })
+    }
+    fn having_clause(&mut self, grouped: bool) -> Result<(String, BinOp, Value)> {
+        if !grouped {
+            return fail("HAVING requires GROUP BY");
+        }
+        if !self.aggregate_ahead() {
+            return fail("HAVING supports only an aggregate compared with a number");
+        }
+        let label = self.aggregate()?.label();
+        let op = match self.peek() {
+            Some(Token::Symbol("=")) => BinOp::Eq,
+            Some(Token::Symbol("!=")) => BinOp::Ne,
+            Some(Token::Symbol("<")) => BinOp::Lt,
+            Some(Token::Symbol("<=")) => BinOp::Le,
+            Some(Token::Symbol(">")) => BinOp::Gt,
+            Some(Token::Symbol(">=")) => BinOp::Ge,
+            _ => return fail("HAVING needs a comparison operator"),
+        };
+        self.pos += 1;
+        let value = match self.additive()? {
+            Expr::Literal(v) => v,
+            _ => return fail("HAVING compares an aggregate with a number"),
+        };
+        Ok((label, op, value))
     }
 
     fn update(&mut self) -> Result<Statement> {
@@ -583,6 +608,7 @@ mod tests {
                 projection: Projection::Columns(vec!["name".into()]),
                 filter: Some(Expr::Binary(BinOp::Ge, col("id"), int(2))),
             group_by: Vec::new(),
+having: None,
             order_by: Some(("name".into(), true)),
                 limit: Some(5), offset: 0,
             }

@@ -1,0 +1,22 @@
+use parth_db::exec::execute;
+use parth_db::table::Database;
+
+fn open(name: &str) -> Database { let dir = std::env::temp_dir().join(format!("pdb_{}_{}", name, std::process::id())); let _ = std::fs::remove_dir_all(&dir); Database::open(&dir).unwrap() }
+
+fn seed(db: &Database) { execute(db, "CREATE TABLE t (id INT PRIMARY KEY, g TEXT, v INT)").unwrap(); execute(db, "INSERT INTO t VALUES (1, 'a', 1), (2, 'a', 2), (3, 'a', 3), (4, 'b', 10), (5, 'c', NULL), (6, 'c', NULL)").unwrap(); }
+
+fn firsts(db: &Database, sql: &str) -> Vec<String> { let rows = execute(db, sql).unwrap().rows; rows.iter().map(|row| format!("{:?}", row[0])).collect() }
+
+fn names(items: &[&str]) -> Vec<String> { items.iter().map(|name| format!("Text({:?})", name)).collect() }
+
+#[test]
+fn having_filters_groups_by_count() { let db = open("gh_count"); seed(&db); assert_eq!(firsts(&db, "SELECT g, COUNT(*) FROM t GROUP BY g HAVING COUNT(*) > 1 ORDER BY COUNT(*) DESC"), names(&["a", "c"])); assert_eq!(firsts(&db, "SELECT g, COUNT(*) FROM t GROUP BY g HAVING COUNT(*) = 1"), names(&["b"])); }
+
+#[test]
+fn having_null_aggregate_fails_the_condition() { let db = open("gh_sum"); seed(&db); assert_eq!(firsts(&db, "SELECT g, SUM(v) FROM t GROUP BY g HAVING SUM(v) > 5 ORDER BY SUM(v) DESC"), names(&["b", "a"])); }
+
+#[test]
+fn having_applies_before_limit() { let db = open("gh_limit"); seed(&db); assert_eq!(firsts(&db, "SELECT g, COUNT(*) FROM t GROUP BY g HAVING COUNT(*) != 1 ORDER BY COUNT(*) DESC LIMIT 1"), names(&["a"])); }
+
+#[test]
+fn unsupported_having_forms_are_rejected() { let db = open("gh_reject"); seed(&db); assert!(execute(&db, "SELECT g, COUNT(*) FROM t HAVING COUNT(*) > 1").is_err()); assert!(execute(&db, "SELECT g, COUNT(*) FROM t GROUP BY g HAVING COUNT(*) > 1 AND COUNT(*) < 5").is_err()); assert!(execute(&db, "SELECT g, COUNT(*) FROM t GROUP BY g HAVING g > 1").is_err()); assert!(execute(&db, "SELECT g, COUNT(*) FROM t GROUP BY g HAVING SUM(v) > 1").is_err()); }
