@@ -73,11 +73,39 @@ fn handle(mut stream: TcpStream, ctx: &Context) -> std::io::Result<()> {
     stream.set_read_timeout(Some(Duration::from_secs(10)))?;
     stream.set_write_timeout(Some(Duration::from_secs(10)))?;
     let response = match read_request(&mut stream) {
+        Ok(request) if is_asset(&request) => return write_asset(&mut stream, &request),
         Ok(request) => route(&request, ctx),
         Err(response) => response,
     };
     write_response(&mut stream, &response)
 }
+
+fn is_asset(request: &Request) -> bool  {request.method == "GET" && asset_for(&request.path).is_some()}
+
+fn asset_for(path: &str) -> Option<(&'static str, &'static str)> {let path = path.split('?').next().unwrap_or("");
+match path {
+        "/" | "/index.html" => Some(("text/html; charset=utf-8", include_str!("../../index.html"))),
+        "/style.css" => Some(("text/css; charset=utf-8", include_str!("../../style.css"))),
+        "/app.js" => Some(("text/javascript; charset=utf-8", include_str!("../../app.js"))),
+        "/csv.js" => Some(("text/javascript; charset=utf-8", include_str!("../../csv.js"))),
+        "/guarded.js" => Some(("text/javascript; charset=utf-8", include_str!("../../guarded.js"))),
+        "/history.js" => Some(("text/javascript; charset=utf-8", include_str!("../../history.js"))),
+        "/latest.js" => Some(("text/javascript; charset=utf-8", include_str!("../../latest.js"))),
+        "/paging.js" => Some(("text/javascript; charset=utf-8", include_str!("../../paging.js"))),
+        "/resultpager.js" => Some(("text/javascript; charset=utf-8", include_str!("../../resultpager.js"))),
+        _ => None,
+}
+}
+
+
+fn write_asset(stream: &mut TcpStream, request: &Request) -> std::io::Result<()> {
+    let (content_type, body) = asset_for(&request.path).unwrap_or(("text/plain", ""));
+    let head = format!("HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n", body.len());
+    stream.write_all(head.as_bytes())?;
+    stream.write_all(body.as_bytes())?;
+    stream.flush()
+}
+
 
 fn find_header_end(buf: &[u8]) -> Option<usize> {
     buf.windows(4).position(|w| w == b"\r\n\r\n")
