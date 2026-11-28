@@ -113,7 +113,7 @@ fn no_matching_rows_gives_no_groups() {
 #[test]
 fn unsupported_forms_are_rejected_explicitly() {
     let (db, dir) = seeded("errors");
-    assert!(failure(&db, "SELECT region, COUNT(*) FROM sales GROUP BY region HAVING SUM(qty) > 1").contains("HAVING aggregate must be in the select list"));
+    assert!(failure(&db, "SELECT region, COUNT(*) FROM sales GROUP BY region HAVING SUM(region) > 1").contains("numeric column"));
     assert!(failure(&db, "SELECT region, product, COUNT(*) FROM sales GROUP BY region").contains("must appear in GROUP BY"));
     assert!(failure(&db, "SELECT region, COUNT(*) FROM sales").contains("GROUP BY"));
     assert!(failure(&db, "SELECT * FROM sales GROUP BY region").contains("not supported with GROUP BY"));

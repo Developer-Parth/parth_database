@@ -122,7 +122,7 @@ pub fn select(
     projection: Projection,
     filter: Option<Expr>,
     group_by: Vec<String>,
-    having: Option<Vec<(String, BinOp, Value)>>,
+    having: Option<Vec<(crate::aggregate::Aggregate, BinOp, Value)>>,
     order_by: Vec<(String, bool)>,
     limit: Option<usize>,
     offset: usize,
@@ -206,7 +206,7 @@ fn grouped_select(
     projection: &Projection,
     filter: Option<Expr>,
     group_by: &[String],
-    having: Option<Vec<(String, BinOp, Value)>>,
+    having: Option<Vec<(crate::aggregate::Aggregate, BinOp, Value)>>,
     order_by: Vec<(String, bool)>,
     limit: Option<usize>,
     offset: usize,
@@ -277,8 +277,7 @@ Some((name, descending)) if aggregate_order(name).is_some() => aggregate_order(n
         }
         None => None,
     };
-    let mut rows = matching_rows_limited(db, schema, &filter, Some(materialize))?;
-    rows.sort_by(|a, b| compare_keys(&keys, a, b));
+    let visible = columns.len(); let mut checks = Vec::new(); for (aggregate, op, value) in having.iter().flatten() { let label = aggregate.label(); let found = columns.iter().zip(plan.iter()).position(|(name, (func, _))| func.is_some() && *name == label); let index = match found { Some(index) => index, None => { let column = match &aggregate.column { Some(name) => Some(column_position(schema, name)?), None => None }; plan.push((Some(aggregate.func), column)); plan.len() - 1 } }; checks.push((index, op, value)); } let mut rows = matching_rows_limited(db, schema, &filter, Some(materialize))?; rows.sort_by(|a, b| compare_keys(&keys, a, b));
     let mut output: Vec<Vec<crate::value::Value>> = Vec::new();
     let mut start = 0;
     while start < rows.len() {
@@ -306,11 +305,7 @@ Some((name, descending)) if aggregate_order(name).is_some() => aggregate_order(n
         output.push(line);
         start = end;
     }
-    for (label, op, value) in having.iter().flatten() {
-        let index = match aggregate_order(label) {
-            Some(index) => index,
-            None => return fail("HAVING aggregate must be in the select list"),
-        };
+    for &(index, op, value) in &checks {
         let mut kept = Vec::new();
         for line in output {
             if binary(op.clone(), line[index].clone(), value.clone())? == Value::Bool(true) {
@@ -318,7 +313,8 @@ Some((name, descending)) if aggregate_order(name).is_some() => aggregate_order(n
             }
         }
         output = kept;
-    }
+}
+for line in output.iter_mut() { line.truncate(visible); }
     if let Some((position, descending)) = order {
         output.sort_by(|a, b| {
             let ordering = a[position].compare(&b[position]);

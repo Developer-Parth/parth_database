@@ -57,7 +57,7 @@ pub enum Statement {
         projection: Projection,
         filter: Option<Expr>,
         group_by: Vec<String>,
-            having: Option<Vec<(String, BinOp, Value)>>,
+            having: Option<Vec<(Aggregate, BinOp, Value)>>,
         order_by: Vec<(String, bool)>,
         limit: Option<usize>, offset: usize,
     },
@@ -375,14 +375,14 @@ if self.eat_keyword("HAVING") {
         };
         Ok(Statement::Select { table, projection, filter, group_by, having, order_by, limit, offset })
     }
-    fn having_clause(&mut self, grouped: bool) -> Result<(String, BinOp, Value)> {
+    fn having_clause(&mut self, grouped: bool) -> Result<(Aggregate, BinOp, Value)> {
         if !grouped {
             return fail("HAVING requires GROUP BY");
         }
         if !self.aggregate_ahead() {
             return fail("HAVING supports only an aggregate compared with a number");
         }
-        let label = self.aggregate()?.label();
+        let label = self.aggregate()?;
         let op = match self.peek() {
             Some(Token::Symbol("=")) => BinOp::Eq,
             Some(Token::Symbol("!=")) => BinOp::Ne,
