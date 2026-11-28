@@ -39,8 +39,9 @@ pub fn run(db: &Database, statement: Statement) -> Result<QueryResult> {
             Ok(QueryResult::affected(0))
         }
         Statement::Insert { table, columns, rows } => insert(db, &table, columns, rows),
-Statement::Select { table, projection, filter, group_by, having, order_by, limit, offset } => {        select(db, &table, projection, filter, group_by, having, order_by, limit, offset, (MAX_MATERIALIZED_ROWS, MAX_MATERIALIZED_BYTES))
-}
+        Statement::Select { table, projection, filter, group_by, having, order_by, limit, offset } => {
+            select(db, &table, projection, filter, group_by, having, order_by, limit, offset, (MAX_MATERIALIZED_ROWS, MAX_MATERIALIZED_BYTES))
+        }
         Statement::Update { table, sets, filter } => update(db, &table, sets, filter),
         Statement::Delete { table, filter } => delete(db, &table, filter),
     }
@@ -121,7 +122,7 @@ pub fn select(
     projection: Projection,
     filter: Option<Expr>,
     group_by: Vec<String>,
-    having: Option<(String, BinOp, Value)>,
+    having: Option<Vec<(String, BinOp, Value)>>,
     order_by: Option<(String, bool)>,
     limit: Option<usize>,
     offset: usize,
@@ -208,7 +209,7 @@ fn grouped_select(
     projection: &Projection,
     filter: Option<Expr>,
     group_by: &[String],
-    having: Option<(String, BinOp, Value)>,
+    having: Option<Vec<(String, BinOp, Value)>>,
     order_by: Option<(String, bool)>,
     limit: Option<usize>,
     offset: usize,
@@ -308,7 +309,7 @@ Some((name, descending)) if aggregate_order(name).is_some() => aggregate_order(n
         output.push(line);
         start = end;
     }
-    if let Some((label, op, value)) = &having {
+    for (label, op, value) in having.iter().flatten() {
         let index = match aggregate_order(label) {
             Some(index) => index,
             None => return fail("HAVING aggregate must be in the select list"),
