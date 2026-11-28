@@ -23,3 +23,10 @@ fn memory_starts_empty() {
     assert!(t.get(b"a").unwrap().is_none());
     assert_eq!(t.check().unwrap().entries, 0);
 }
+
+#[test]
+fn disk_store_in_memory_starts_empty() {
+    let s = parth_db::disk::DiskStore::in_memory().unwrap();
+    assert!(s.get(b"a").unwrap().is_none());
+    assert!(!s.contains(b"a").unwrap());
+}

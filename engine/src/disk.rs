@@ -12,7 +12,7 @@ const MIGRATION_CHUNK: usize = 400;
 
 struct Inner {
     tree: Mutex<BTree>,
-    _lock: File,
+    _lock: Option<File>,
 }
 
 #[derive(Clone)]
@@ -77,7 +77,12 @@ impl DiskStore {
         }
         let _ = fs::remove_file(dir.join(MIGRATION_FILE));
         let tree = BTree::open(&data)?;
-        Ok(DiskStore { inner: Arc::new(Inner { tree: Mutex::new(tree), _lock: lock }) })
+        Ok(DiskStore { inner: Arc::new(Inner { tree: Mutex::new(tree), _lock: Some(lock) }) })
+    }
+
+    pub fn in_memory() -> Result<DiskStore> {
+        let tree = BTree::in_memory()?;
+        Ok(DiskStore { inner: Arc::new(Inner { tree: Mutex::new(tree), _lock: None }) })
     }
 
     fn tree(&self) -> std::sync::MutexGuard<'_, BTree> {
