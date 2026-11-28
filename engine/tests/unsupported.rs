@@ -8,9 +8,11 @@ fn unsupported_constructs_are_errors_not_silent_results() {
     let db = Database::open(&dir).unwrap();
     execute(&db, "CREATE TABLE t (id INT PRIMARY KEY, n INT)").unwrap();
     execute(&db, "INSERT INTO t VALUES (1, 5), (2, 7)").unwrap();
+    execute(&db, "CREATE TABLE u (id INT PRIMARY KEY, s TEXT)").unwrap();
+    execute(&db, "INSERT INTO u VALUES (1, 'abc')").unwrap();
     let unsupported = [
-        "SELECT * FROM t JOIN t ON 1 = 1",
-        "SELECT * FROM t WHERE n LIKE 5",
+        "SELECT * FROM t JOIN u ON t.id = u.id",
+        "SELECT * FROM u WHERE s LIKE 'a%'",
         "SELECT * FROM t UNION SELECT * FROM t",
         "SELECT * FROM t WHERE n BETWEEN 1 AND 9",
         "SELECT * FROM t WHERE n IN (5, 7)",
@@ -20,5 +22,6 @@ fn unsupported_constructs_are_errors_not_silent_results() {
         assert!(execute(&db, sql).is_err(), "{sql}");
     }
     assert_eq!(execute(&db, "SELECT n FROM t").unwrap().rows.len(), 2);
+    assert_eq!(execute(&db, "SELECT s FROM u").unwrap().rows.len(), 1);
     let _ = std::fs::remove_dir_all(&dir);
 }
