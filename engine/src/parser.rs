@@ -18,6 +18,7 @@ pub enum BinOp {
     Sub,
     Mul,
     Div,
+    Like,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -433,6 +434,10 @@ if self.eat_keyword("DISTINCT") { return fail("SELECT DISTINCT is not supported"
 
     fn comparison(&mut self) -> Result<Expr> {
         let left = self.additive()?;
+        if self.eat_keyword("LIKE") {
+            let pattern = self.additive()?;
+            return Ok(Expr::Binary(BinOp::Like, Box::new(left), Box::new(pattern)));
+        }
         if self.eat_keyword("IS") {
             let negated = self.eat_keyword("NOT");
             self.expect_keyword("NULL")?;

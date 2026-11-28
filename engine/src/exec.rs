@@ -430,6 +430,32 @@ pub fn eval(expr: &Expr, context: Option<(&Schema, &[Value])>) -> Result<Value> 
     }
 }
 
+fn like_match(text: &[char], pattern: &[char]) -> bool {
+    let mut t = 0;
+    let mut p = 0;
+    let mut star: Option<usize> = None;
+    let mut mark = 0;
+    while t < text.len() {
+        if p < pattern.len() && pattern[p] == '%' {
+            star = Some(p);
+            mark = t;
+            p += 1;
+        } else if p < pattern.len() && (pattern[p] == '_' || pattern[p] == text[t]) {
+            p += 1;
+            t += 1;
+        } else if let Some(s) = star {
+            p = s + 1;
+            mark += 1;
+            t = mark;
+        } else {
+            return false;
+        }
+    }
+    while p < pattern.len() && pattern[p] == '%' {
+        p += 1;
+    }
+    p == pattern.len()
+}
 fn binary(op: BinOp, l: Value, r: Value) -> Result<Value> {
     match op {
         BinOp::And => {
@@ -448,6 +474,15 @@ fn binary(op: BinOp, l: Value, r: Value) -> Result<Value> {
                 _ => Value::Null,
             })
         }
+        BinOp::Like => match (&l, &r) {
+            (Value::Null, _) | (_, Value::Null) => Ok(Value::Null),
+            (Value::Text(text), Value::Text(pattern)) => {
+                let text: Vec<char> = text.chars().collect();
+                let pattern: Vec<char> = pattern.chars().collect();
+                Ok(Value::Bool(like_match(&text, &pattern)))
+            }
+            _ => fail("LIKE needs text on both sides"),
+        },
         BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
             if l == Value::Null || r == Value::Null {
                 return Ok(Value::Null);

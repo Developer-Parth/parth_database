@@ -12,7 +12,6 @@ fn unsupported_constructs_are_errors_not_silent_results() {
     execute(&db, "INSERT INTO u VALUES (1, 'abc')").unwrap();
     let unsupported = [
         "SELECT * FROM t JOIN u ON t.id = u.id",
-        "SELECT * FROM u WHERE s LIKE 'a%'",
         "SELECT * FROM t UNION SELECT * FROM t",
         "SELECT * FROM t WHERE n BETWEEN 1 AND 9",
         "SELECT * FROM t WHERE n IN (5, 7)",
