@@ -52,6 +52,7 @@ Rules that are tested:
 - NULL values are skipped. COUNT(*) counts every matching row. With no matching rows COUNT is 0 and the others are NULL.
 - SUM of INT columns is INT and fails with an error on integer overflow. AVG is REAL. A REAL result that is not finite is an error.
 - SUM and AVG need a numeric column. Only COUNT accepts *.
+- COUNT(DISTINCT col) counts the distinct non-NULL values of one column and names its result column count_distinct(col). DISTINCT is rejected with SUM, MIN, MAX and AVG, and COUNT(DISTINCT *) is rejected.
 - LIMIT 0 returns no rows, any larger LIMIT returns the one row.
 - ORDER BY is rejected with aggregates. Mixing plain columns with aggregates is rejected. GROUP BY is described below.
 

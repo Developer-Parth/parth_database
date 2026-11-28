@@ -8,6 +8,7 @@ pub enum AggFunc {
     Min,
     Max,
     Avg,
+    CountDistinct,
 }
 
 impl AggFunc {
@@ -29,6 +30,7 @@ impl AggFunc {
             AggFunc::Min => "min",
             AggFunc::Max => "max",
             AggFunc::Avg => "avg",
+AggFunc::CountDistinct => "count_distinct",
         }
     }
 }
@@ -60,6 +62,7 @@ pub fn evaluate(func: AggFunc, index: Option<usize>, rows: &[Vec<Value>]) -> Res
             let count = if index.is_some() { values.len() } else { rows.len() };
             Ok(Value::Int(count as i64))
         }
+AggFunc::CountDistinct => { let mut sorted = values.clone(); sorted.sort_by(|a, b| a.compare(b)); sorted.dedup_by(|a, b| a.compare(b) == Ordering::Equal); Ok(Value::Int(sorted.len() as i64)) }
         AggFunc::Min => Ok(extreme(&values, Ordering::Less)),
         AggFunc::Max => Ok(extreme(&values, Ordering::Greater)),
         AggFunc::Sum | AggFunc::Avg => total(func, &values),

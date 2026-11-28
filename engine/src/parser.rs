@@ -261,11 +261,12 @@ impl Parser {
         }
     }    fn aggregate(&mut self) -> Result<Aggregate> {
         let name = self.identifier()?;
-        let func = match AggFunc::parse(&name) {
+        let mut func = match AggFunc::parse(&name) {
             Some(func) => func,
             None => return fail(format!("unknown function {name}")),
         };
         self.expect_symbol("(")?;
+let distinct = self.eat_keyword("DISTINCT"); if distinct { if func != AggFunc::Count { return fail("DISTINCT is only supported with COUNT"); } func = AggFunc::CountDistinct; }
         let column = if self.eat_symbol("*") {
             if func != AggFunc::Count {
                 return fail("only COUNT accepts *");
