@@ -434,6 +434,10 @@ if self.eat_keyword("DISTINCT") { return fail("SELECT DISTINCT is not supported"
 
     fn comparison(&mut self) -> Result<Expr> {
         let left = self.additive()?;
+let negated = self.eat_keyword("NOT");
+if self.eat_keyword("BETWEEN") { let low = self.additive()?; self.expect_keyword("AND")?; let high = self.additive()?; let range = Expr::Binary(BinOp::And, Box::new(Expr::Binary(BinOp::Ge, Box::new(left.clone()), Box::new(low))), Box::new(Expr::Binary(BinOp::Le, Box::new(left), Box::new(high)))); return Ok(if negated { Expr::Not(Box::new(range)) } else { range }); }
+if self.eat_keyword("IN") { self.expect_symbol("(")?; let mut members: Option<Expr> = None; let mut count = 0; loop { let item = self.additive()?; count += 1; if count > 256 { return fail("IN list has too many values"); } let eq = Expr::Binary(BinOp::Eq, Box::new(left.clone()), Box::new(item)); members = Some(match members { None => eq, Some(prev) => Expr::Binary(BinOp::Or, Box::new(prev), Box::new(eq)) }); if !self.eat_symbol(",") { break; } } self.expect_symbol(")")?; let set = members.unwrap(); return Ok(if negated { Expr::Not(Box::new(set)) } else { set }); }
+if negated { return fail("NOT must be followed by BETWEEN or IN"); }
         if self.eat_keyword("LIKE") {
             let pattern = self.additive()?;
             return Ok(Expr::Binary(BinOp::Like, Box::new(left), Box::new(pattern)));

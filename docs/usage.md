@@ -36,7 +36,7 @@ Every endpoint except /api/health needs the header `Authorization: Bearer <token
     DELETE FROM notes WHERE id = 1
     DROP TABLE notes
 
-Column types are INT, REAL, TEXT and BOOL. Every table needs exactly one PRIMARY KEY column. A key may be at most 500 bytes and a stored row up to 1 MiB (1048576 bytes). That storage limit is separate from the 1 MB HTTP request body limit. There are no JOINs.
+Column types are INT, REAL, TEXT and BOOL. Every table needs exactly one PRIMARY KEY column. A key may be at most 500 bytes and a stored row up to 1 MiB (1048576 bytes). That storage limit is separate from the 1 MB HTTP request body limit. There are no JOINs. WHERE supports BETWEEN, NOT BETWEEN, IN and NOT IN. An IN list may hold at most 256 values. NULL follows SQL unknown semantics, so id NOT IN (1, NULL) matches no rows.
 
 ## Aggregates
 
