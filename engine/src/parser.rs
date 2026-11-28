@@ -312,6 +312,7 @@ impl Parser {
     }
 
     fn select(&mut self) -> Result<Statement> {
+if self.eat_keyword("DISTINCT") { return fail("SELECT DISTINCT is not supported"); }
         let projection = if self.eat_symbol("*") {
             Projection::All
         } else {
